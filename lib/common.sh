@@ -152,19 +152,21 @@ safe_read() {
 }
 
 # 安全读取单字符（修复循环问题）
+# 用法: safe_read_char "提示" "返回变量名" ["默认值"]
 safe_read_char() {
     local prompt="$1"
-    local default="${2:-}"
-    local result
+    local var_name="$2"
+    local default="${3:-}"
 
     # 检查是否为交互式终端
     if [[ ! -t 0 ]]; then
-        echo "$default"
+        eval "$var_name='$default'"
         return 0
     fi
 
+    local result=""
     if [ -n "$default" ]; then
-        read -p "$prompt [$default]: " -n 1 -r result
+        read -p "$prompt [$default]: " -n 1 -r result || result=""
         echo
         result="${result:-$default}"
     else
@@ -172,7 +174,7 @@ safe_read_char() {
         echo
     fi
 
-    echo "$result"
+    eval "$var_name='$result'"
 }
 
 # 暂停等待

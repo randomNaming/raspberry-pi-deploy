@@ -132,7 +132,8 @@ service_menu() {
 
         echo
         local choice
-        choice=$(safe_read_char "选择 [1-${#options[@]}]" "")
+        local choice
+        safe_read_char "选择 [1-${#options[@]}]" choice
         echo
 
         case $choice in

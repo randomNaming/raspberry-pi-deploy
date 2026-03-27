@@ -114,7 +114,7 @@ main_menu() {
         echo
 
         local choice
-        choice=$(safe_read_char "选择 [0-9]" "")
+        safe_read_char "选择 [0-9]" choice
         echo
 
         case $choice in
