@@ -86,7 +86,7 @@ main_menu() {
         echo -e "${BLUE}========================================${NC}"
         echo -e "${BLUE}  HCP Simulator Lite${NC}"
         echo -e "${BLUE}  交互式部署管理器${NC}"
-        echo -e "${BLUE}  树莓派4B版${NC}"
+        echo -e "${BLUE}  树莓派4B版  v${SCRIPT_VERSION}${NC}"
         echo -e "${BLUE}========================================${NC}"
         echo
 
@@ -189,7 +189,7 @@ main() {
     create_temp_dir
 
     # 显示欢迎信息
-    print_header "HCP Simulator Lite 部署管理器"
+    print_header "HCP Simulator Lite 部署管理器 v${SCRIPT_VERSION}"
     print_info "目标平台: 树莓派4B (Raspberry Pi OS)"
     print_info "应用: $APP_NAME"
     echo
