@@ -23,8 +23,8 @@ readonly JAR_FILE="${APP_NAME}.jar"
 readonly SERVICE_NAME="${APP_NAME}.service"
 readonly VPN_SERVICE="wg-quick@wg0.service"
 
-# 脚本所在目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 脚本所在目录（兼容管道执行方式）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # ============================================
 # 颜色定义
@@ -776,8 +776,8 @@ configure_vpn() {
     local vpn_ip sim_id
 
     if [ -f "/etc/systemd/system/${SERVICE_NAME}" ]; then
-        vpn_ip=$(grep "SPRING_CLOUD_NACOS_DISCOVERY_IP" /etc/systemd/system/${SERVICE_NAME}" | cut -d'"' -f2)
-        sim_id=$(grep "SIMULATOR_INSTANCE_ID" /etc/systemd/system/${SERVICE_NAME}" | cut -d'"' -f2)
+        vpn_ip=$(grep "SPRING_CLOUD_NACOS_DISCOVERY_IP" /etc/systemd/system/${SERVICE_NAME} | cut -d'"' -f2)
+        sim_id=$(grep "SIMULATOR_INSTANCE_ID" /etc/systemd/system/${SERVICE_NAME} | cut -d'"' -f2)
     fi
 
     vpn_ip=${vpn_ip:-10.0.0.2}
@@ -862,9 +862,9 @@ EOF
     IFS=':' read -r vpn_ip sim_id <<< "$vpn_config"
 
     sudo sed -i "s|Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=.*\"|Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=$vpn_ip\"|" \
-        /etc/systemd/system/${SERVICE_NAME}" 2>/dev/null || true
+        /etc/systemd/system/${SERVICE_NAME} 2>/dev/null || true
     sudo sed -i "s|Environment=\"SIMULATOR_INSTANCE_ID=.*\"|Environment=\"SIMULATOR_INSTANCE_ID=$sim_id\"|" \
-        /etc/systemd/system/${SERVICE_NAME}" 2>/dev/null || true
+        /etc/systemd/system/${SERVICE_NAME} 2>/dev/null || true
 
     sudo systemctl daemon-reload
 
@@ -1209,7 +1209,7 @@ backup_current() {
     tar -czf "$backup_file" \
         -C "$APP_DIR" . \
         -C "$(dirname "$STATE_FILE")" .hcp-deploy-state \
-        /etc/systemd/system/${SERVICE_NAME}" 2>/dev/null || true
+        /etc/systemd/system/${SERVICE_NAME} 2>/dev/null || true
 
     print_success "完整备份: $backup_file"
 }
@@ -1255,7 +1255,7 @@ full_reinstall() {
     sudo systemctl disable "${SERVICE_NAME}" 2>/dev/null || true
 
     # 移除服务
-    sudo rm -f /etc/systemd/system/${SERVICE_NAME}"
+    sudo rm -f /etc/systemd/system/${SERVICE_NAME}
     sudo systemctl daemon-reload
 
     # 全新部署
