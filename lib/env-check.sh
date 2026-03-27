@@ -74,21 +74,68 @@ check_system() {
 check_java() {
     print_step "检测Java"
 
-    if ! command_exists java; then
+    local java_cmd=""
+    local java_ver=""
+    local major=""
+
+    # 方式1: 通过PATH查找java命令
+    if command_exists java; then
+        java_cmd="java"
+    fi
+
+    # 方式2: 检查常见Java安装路径
+    if [ -z "$java_cmd" ]; then
+        local java_paths=(
+            "/usr/bin/java"
+            "/usr/local/bin/java"
+            "/opt/java/*/bin/java"
+            "/usr/lib/jvm/*/bin/java"
+            "/usr/java/*/bin/java"
+        )
+        for pattern in "${java_paths[@]}"; do
+            for path in $pattern; do
+                if [ -x "$path" ]; then
+                    java_cmd="$path"
+                    break 2
+                fi
+            done
+        done
+    fi
+
+    # 方式3: 通过update-alternatives查找
+    if [ -z "$java_cmd" ]; then
+        local alt_java
+        alt_java=$(update-alternatives --list java 2>/dev/null | head -1 || true)
+        if [ -n "$alt_java" ] && [ -x "$alt_java" ]; then
+            java_cmd="$alt_java"
+        fi
+    fi
+
+    # 未找到Java
+    if [ -z "$java_cmd" ]; then
         print_error "Java未安装"
+        print_info "安装命令: sudo apt install -y openjdk-17-jdk"
         return 1
     fi
 
-    local java_ver major
-    java_ver=$(java -version 2>&1 | head -1 | cut -d'"' -f2)
+    # 获取Java版本
+    java_ver=$("$java_cmd" -version 2>&1 | head -1 | cut -d'"' -f2)
     major=$(echo "$java_ver" | cut -d'.' -f1 | sed 's/[^0-9]//g')
 
+    # 处理Java 1.x.x格式（如1.8.0_392）
+    if [ "$major" -eq 1 ]; then
+        major=$(echo "$java_ver" | cut -d'.' -f2)
+    fi
+
+    # 检查版本是否满足要求
     if [ "$major" -ge "$JAVA_MIN_VERSION" ]; then
         print_success "Java版本: $java_ver"
     else
-        print_error "Java版本过低: $java_ver (需要${JAVA_MIN_VERSION}+)"
-        return 1
+        print_warn "Java版本过低: $java_ver (建议${JAVA_MIN_VERSION}+)"
+        print_info "当前Java可用，但建议升级: sudo apt install -y openjdk-17-jdk"
     fi
+
+    print_info "Java路径: $java_cmd"
 
     if [ -n "${JAVA_HOME:-}" ]; then
         print_info "JAVA_HOME: $JAVA_HOME"
@@ -111,16 +158,35 @@ check_network() {
     print_info "检查网络连接..."
     if ping -c 1 -W 3 8.8.8.8 &>/dev/null; then
         print_success "网络: 已连接"
+    elif ping -c 1 -W 3 114.114.114.114 &>/dev/null; then
+        print_success "网络: 已连接 (备用)"
     else
         print_error "网络: 无法访问"
         ((errors++))
     fi
 
-    # DNS解析测试
+    # DNS解析测试（使用国内可达的域名）
     print_info "检查DNS..."
-    if host google.com &>/dev/null || nslookup google.com &>/dev/null; then
-        print_success "DNS: 正常"
-    else
+    local dns_ok=false
+    local test_domains=("baidu.com" "qq.com" "taobao.com" "aliyun.com")
+
+    for domain in "${test_domains[@]}"; do
+        if host "$domain" &>/dev/null || nslookup "$domain" &>/dev/null; then
+            print_success "DNS: 正常 (已解析 $domain)"
+            dns_ok=true
+            break
+        fi
+    done
+
+    # 尝试通过getent检测DNS
+    if [ "$dns_ok" = false ]; then
+        if getent hosts baidu.com &>/dev/null; then
+            print_success "DNS: 正常 (通过getent)"
+            dns_ok=true
+        fi
+    fi
+
+    if [ "$dns_ok" = false ]; then
         print_error "DNS: 异常"
         ((errors++))
     fi
