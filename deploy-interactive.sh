@@ -8,7 +8,7 @@
 #   ./deploy-interactive.sh
 #
 
-set -euo pipefail
+set -uo pipefail
 
 # ============================================
 # 常量定义
@@ -1076,7 +1076,7 @@ manual_deploy() {
         done
 
         echo
-        read -p "选择步骤 [1-${#options[@]}]: " -n 1 -r choice
+        read -p "选择步骤 [1-${#options[@]}]: " -n 1 -r || choice=""
         echo
 
         local result=0
@@ -1167,7 +1167,7 @@ image_takeover() {
     done
 
     echo
-    read -p "选择 [1-${#options[@]}]: " -n 1 -r choice
+    read -p "选择 [1-${#options[@]}]: " -n 1 -r || choice=""
     echo
 
     case $choice in
@@ -1357,7 +1357,7 @@ service_menu() {
         done
 
         echo
-        read -p "选择 [1-${#options[@]}]: " -n 1 -r choice
+        read -p "选择 [1-${#options[@]}]: " -n 1 -r || choice=""
         echo
 
         case $choice in
@@ -1511,7 +1511,7 @@ main_menu() {
         echo "  [0] 退出"
         echo
 
-        read -p "  选择 [0-9]: " -n 1 -r choice
+        read -p "  选择 [0-9]: " -n 1 -r || choice=""
         echo
 
         case $choice in
