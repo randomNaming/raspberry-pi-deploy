@@ -35,7 +35,7 @@ check_system() {
         fi
     else
         print_error "无法检测操作系统"
-        ((++errors)) || true
+        ((errors++))
     fi
 
     # 架构检查
@@ -48,7 +48,7 @@ check_system() {
             ;;
         *)
             print_error "不支持的架构: $arch"
-            ((++errors)) || true
+            ((errors++))
             ;;
     esac
 
@@ -62,7 +62,7 @@ check_system() {
         print_warn "内存: ${mem_total}MB (偏低，建议4GB+)"
     else
         print_error "内存: ${mem_total}MB (不足)"
-        ((++errors)) || true
+        ((errors++))
     fi
 
     return $errors
@@ -191,7 +191,7 @@ check_network() {
         print_success "网络: 已连接 (备用)"
     else
         print_error "网络: 无法访问"
-        ((++errors)) || true
+        ((errors++))
     fi
 
     # DNS解析测试（使用国内可达的域名）
@@ -217,7 +217,7 @@ check_network() {
 
     if [ "$dns_ok" = false ]; then
         print_error "DNS: 异常"
-        ((++errors)) || true
+        ((errors++))
     fi
 
     return $errors
@@ -329,23 +329,19 @@ run_all_checks() {
     print_header "环境检测"
     echo
 
-    # 注意: 使用 || true 避免 set -e 导致脚本退出
     check_root || true
-
-    check_system; local e=$?; ((total_errors+=e)) || true
-    check_java; local e=$?; ((total_errors+=e)) || true
-    check_network; local e=$?; ((total_errors+=e)) || true
-    check_vpn; local e=$?; ((total_errors+=e)) || true
-    check_disk; local e=$?; ((total_errors+=e)) || true
+    check_system || ((total_errors+=$?))
+    check_java || ((total_errors+=$?))
+    check_network || ((total_errors+=$?))
+    check_vpn || ((total_errors+=$?))
+    check_disk || ((total_errors+=$?))
 
     echo
     print_header "检测摘要"
 
-    if [ "$total_errors" -eq 0 ]; then
+    if [ $total_errors -eq 0 ]; then
         print_success "所有检测通过!"
     else
         print_warn "发现 $total_errors 个问题（不影响部署）"
     fi
-
-    return 0
 }
