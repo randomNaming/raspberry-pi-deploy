@@ -29,22 +29,29 @@
 
 ## 快速开始
 
-### 1. 克隆仓库
+### 一行命令安装（推荐）
 
 ```bash
+bash <(curl -sL https://raw.githubusercontent.com/randomNaming/raspberry-pi-deploy/main/install.sh)
+```
+
+安装完成后，可使用快捷命令运行：
+
+```bash
+hcp-deploy
+```
+
+### 手动安装
+
+```bash
+# 1. 克隆仓库
 git clone https://github.com/randomNaming/raspberry-pi-deploy.git
 cd raspberry-pi-deploy
-```
 
-### 2. 添加执行权限
-
-```bash
+# 2. 添加执行权限
 chmod +x deploy-interactive.sh
-```
 
-### 3. 运行部署脚本
-
-```bash
+# 3. 运行部署脚本
 ./deploy-interactive.sh
 ```
 
@@ -78,7 +85,8 @@ chmod +x deploy-interactive.sh
 
 ```
 raspberry-pi-deploy/
-├── deploy-interactive.sh     # 主入口脚本
+├── install.sh               # 一键安装引导脚本
+├── deploy-interactive.sh    # 主入口脚本
 └── lib/
     ├── common.sh            # 通用工具函数（日志、颜色、用户交互）
     ├── state.sh             # 状态管理（部署进度记录）
