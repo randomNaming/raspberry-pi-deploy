@@ -8,7 +8,7 @@
 #   ./deploy-interactive.sh
 #
 
-set -uo pipefail
+set -euo pipefail
 
 # ============================================
 # 常量定义
@@ -1178,7 +1178,7 @@ image_takeover() {
         5) full_reinstall ;;
         6) restore_backup ;;
         7) return 0 ;;
-        *) print_error "无效选择" ;;
+        *) ;;
     esac
 }
 
@@ -1370,7 +1370,7 @@ service_menu() {
             7) service_enable ;;
             8) service_disable ;;
             9) return 0 ;;
-            *) print_error "无效选择" ;;
+            *) ;;
         esac
     done
 }
@@ -1525,10 +1525,10 @@ main_menu() {
             8) show_rollback_menu ;;
             9) view_logs ;;
             0) exit_menu ;;
-            *) print_error "无效选择" ;;
+            *) ;;
         esac
 
-        if [ "$choice" != "0" ]; then
+        if [ "$choice" != "0" ] && [ -n "$choice" ]; then
             pause
         fi
     done
