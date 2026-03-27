@@ -114,25 +114,54 @@ check_java() {
     # 未找到Java
     if [ -z "$java_cmd" ]; then
         print_error "Java未安装"
-        print_info "安装命令: sudo apt install -y openjdk-17-jdk"
+        print_info "安装命令: sudo apt install -y openjdk-8-jdk"
         return 1
     fi
 
-    # 获取Java版本
-    java_ver=$("$java_cmd" -version 2>&1 | head -1 | cut -d'"' -f2)
+    # 获取Java版本（兼容多种输出格式）
+    # 格式1: openjdk version "17.0.12" 2024-07-16
+    # 格式2: java version "1.8.0_392"
+    # 格式3: java 21.0.1 2023-10-17 LTS (某些新版本格式)
+    local version_line
+    version_line=$("$java_cmd" -version 2>&1 | head -1)
+
+    # 提取版本号（引号内的内容或直接的版本号）
+    if [[ "$version_line" =~ \"([^\"]+)\" ]]; then
+        java_ver="${BASH_REMATCH[1]}"
+    elif [[ "$version_line" =~ ([0-9]+\.[0-9]+\.[0-9]+[_0-9]*) ]]; then
+        java_ver="${BASH_REMATCH[1]}"
+    else
+        java_ver="$version_line"
+    fi
+
+    print_info "检测到版本字符串: $java_ver"
+
+    # 提取主版本号
     major=$(echo "$java_ver" | cut -d'.' -f1 | sed 's/[^0-9]//g')
 
-    # 处理Java 1.x.x格式（如1.8.0_392）
-    if [ "$major" -eq 1 ]; then
-        major=$(echo "$java_ver" | cut -d'.' -f2)
+    # 处理Java 1.x.x格式（如1.8.0_392 -> 主版本为8）
+    if [ "$major" = "1" ]; then
+        local minor
+        minor=$(echo "$java_ver" | cut -d'.' -f2)
+        if [ -n "$minor" ]; then
+            major="$minor"
+        fi
+    fi
+
+    # 验证主版本号是否为有效数字
+    if ! [[ "$major" =~ ^[0-9]+$ ]]; then
+        print_warn "无法解析Java主版本号: $major"
+        print_info "原始版本: $java_ver"
+        print_info "Java路径: $java_cmd"
+        return 0
     fi
 
     # 检查版本是否满足要求
     if [ "$major" -ge "$JAVA_MIN_VERSION" ]; then
-        print_success "Java版本: $java_ver"
+        print_success "Java版本: $java_ver (主版本: $major)"
     else
-        print_warn "Java版本过低: $java_ver (建议${JAVA_MIN_VERSION}+)"
-        print_info "当前Java可用，但建议升级: sudo apt install -y openjdk-17-jdk"
+        print_warn "Java版本过低: $java_ver (主版本: $major，要求: ${JAVA_MIN_VERSION}+)"
+        print_info "当前Java可用，但建议安装: sudo apt install -y openjdk-8-jdk"
     fi
 
     print_info "Java路径: $java_cmd"
