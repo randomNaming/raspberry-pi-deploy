@@ -35,7 +35,7 @@ check_system() {
         fi
     else
         print_error "无法检测操作系统"
-        ((errors++))
+        ((++errors)) || true
     fi
 
     # 架构检查
@@ -48,7 +48,7 @@ check_system() {
             ;;
         *)
             print_error "不支持的架构: $arch"
-            ((errors++))
+            ((++errors)) || true
             ;;
     esac
 
@@ -62,7 +62,7 @@ check_system() {
         print_warn "内存: ${mem_total}MB (偏低，建议4GB+)"
     else
         print_error "内存: ${mem_total}MB (不足)"
-        ((errors++))
+        ((++errors)) || true
     fi
 
     return $errors
@@ -191,7 +191,7 @@ check_network() {
         print_success "网络: 已连接 (备用)"
     else
         print_error "网络: 无法访问"
-        ((errors++))
+        ((++errors)) || true
     fi
 
     # DNS解析测试（使用国内可达的域名）
@@ -217,7 +217,7 @@ check_network() {
 
     if [ "$dns_ok" = false ]; then
         print_error "DNS: 异常"
-        ((errors++))
+        ((++errors)) || true
     fi
 
     return $errors
