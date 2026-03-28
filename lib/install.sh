@@ -199,10 +199,13 @@ get_latest_release() {
 # -----------------------------------------------
 # 从发行版下载JAR
 # -----------------------------------------------
+DOWNLOADED_JAR_PATH=""
+
 download_jar_from_release() {
     local version="$1"
     local jar_url=""
     local temp_jar="/tmp/${JAR_FILE}.download"
+    DOWNLOADED_JAR_PATH=""
 
     # 清理旧文件
     rm -f "$temp_jar"
@@ -224,13 +227,16 @@ download_jar_from_release() {
         print_info "文件大小: ${file_size}"
 
         # 检查是否为HTML错误页面
-        if head -c 100 "$temp_jar" | grep -qi "<!DOCTYPE\|<html\|<head"; then
+        if head -c 100 "$temp_jar" 2>/dev/null | grep -qi "<!DOCTYPE\|<html\|<head"; then
             print_warn "下载的是HTML页面，非JAR文件"
             rm -f "$temp_jar"
         else
-            echo "$temp_jar"
+            print_success "下载成功: ${temp_jar}"
+            DOWNLOADED_JAR_PATH="$temp_jar"
             return 0
         fi
+    else
+        print_warn "文件为空或不存在"
     fi
 
     # 备用：从GitHub下载
@@ -247,13 +253,16 @@ download_jar_from_release() {
         file_size=$(du -h "$temp_jar" | cut -f1)
         print_info "文件大小: ${file_size}"
 
-        if head -c 100 "$temp_jar" | grep -qi "<!DOCTYPE\|<html\|<head"; then
+        if head -c 100 "$temp_jar" 2>/dev/null | grep -qi "<!DOCTYPE\|<html\|<head"; then
             print_warn "下载的是HTML页面，非JAR文件"
             rm -f "$temp_jar"
         else
-            echo "$temp_jar"
+            print_success "下载成功: ${temp_jar}"
+            DOWNLOADED_JAR_PATH="$temp_jar"
             return 0
         fi
+    else
+        print_warn "文件为空或不存在"
     fi
 
     rm -f "$temp_jar"
@@ -290,11 +299,8 @@ deploy_jar() {
             print_info "最新发行版: ${latest_version}"
 
             if confirm "是否下载 ${JAR_FILE}?" "y"; then
-                local downloaded_jar
-                downloaded_jar=$(download_jar_from_release "$latest_version")
-
-                if [ -n "$downloaded_jar" ] && [ -f "$downloaded_jar" ]; then
-                    jar_path="$downloaded_jar"
+                if download_jar_from_release "$latest_version"; then
+                    jar_path="$DOWNLOADED_JAR_PATH"
                     print_success "下载完成"
                 else
                     print_error "下载失败"
