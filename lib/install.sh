@@ -712,7 +712,7 @@ verify_deployment() {
 # 一键自动部署
 # -----------------------------------------------
 auto_deploy() {
-    local total_steps=8
+    local total_steps=9
     local current_step=0
 
     print_header "一键自动部署"
@@ -742,7 +742,25 @@ auto_deploy() {
     snapshot_id=$(create_snapshot)
     echo
 
-    # 步骤3: 安装Java
+    # 步骤3: WireGuard VPN
+    ((current_step++))
+    print_step "步骤 $current_step/$total_steps: WireGuard VPN"
+
+    if is_wireguard_installed 2>/dev/null && is_wireguard_running 2>/dev/null; then
+        print_info "WireGuard 已安装并运行"
+    elif confirm "配置 WireGuard VPN?" "y"; then
+        if ! setup_wireguard_wizard; then
+            print_warn "WireGuard 配置未完成，服务可能无法连接 Nacos"
+            if ! confirm "继续部署?" "n"; then
+                return 1
+            fi
+        fi
+    else
+        print_info "跳过 WireGuard 配置"
+    fi
+    mark_complete "wireguard"
+
+    # 步骤4: 安装Java
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: Java安装"
 
@@ -764,13 +782,13 @@ auto_deploy() {
     fi
     mark_complete "java_install"
 
-    # 步骤4: 创建目录
+    # 步骤5: 创建目录
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: 创建目录结构"
     create_dirs
     mark_complete "create_dirs"
 
-    # 步骤5: 部署JAR
+    # 步骤6: 部署JAR
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: 部署应用"
 
@@ -781,19 +799,19 @@ auto_deploy() {
     fi
     mark_complete "deploy_jar"
 
-    # 步骤6: 部署配置
+    # 步骤7: 部署配置
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: 部署配置"
     deploy_config
     mark_complete "deploy_config"
 
-    # 步骤7: 部署服务
+    # 步骤8: 部署服务
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: 部署系统服务"
     deploy_service
     mark_complete "deploy_service"
 
-    # 步骤8: 配置并启动
+    # 步骤9: 配置并启动
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: 配置并启动服务"
 
@@ -843,6 +861,7 @@ manual_deploy() {
             "部署配置文件"
             "部署系统服务"
             "配置桩/服务器 (可选)"
+            "WireGuard VPN (可选)"
             "启动服务"
             "验证部署"
             "返回主菜单"
@@ -861,8 +880,8 @@ manual_deploy() {
 
         echo
         echo -e "  ${YELLOW}[提示]${NC} 步骤4已包含桩/服务器配置，步骤6可跳过"
-
         echo
+
         local choice
         safe_read_char "选择步骤 [1-${#options[@]}]" choice
         echo
@@ -876,9 +895,10 @@ manual_deploy() {
             4)  deploy_config; result=$? ;;
             5)  deploy_service; result=$? ;;
             6)  run_config_wizard; result=$? ;;
-            7)  start_service; result=$? ;;
-            8)  verify_deployment; result=$? ;;
-            9)  return 0 ;;
+            7)  setup_wireguard_wizard; result=$? ;;
+            8)  start_service; result=$? ;;
+            9)  verify_deployment; result=$? ;;
+            10) return 0 ;;
             *)
                 if [ -n "$choice" ]; then
                     print_error "无效选择"

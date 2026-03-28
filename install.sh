@@ -162,6 +162,7 @@ download_by_files() {
         "state.sh"
         "env-check.sh"
         "install.sh"
+        "wireguard.sh"
         "config.sh"
         "service.sh"
         "snapshot.sh"

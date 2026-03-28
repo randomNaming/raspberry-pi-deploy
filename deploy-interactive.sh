@@ -14,6 +14,7 @@
 #     state.sh             - 状态管理
 #     env-check.sh         - 环境检测
 #     install.sh           - 安装部署
+#     wireguard.sh         - WireGuard VPN
 #     config.sh            - 配置管理
 #     service.sh           - 服务管理
 #     snapshot.sh          - 快照与回滚
@@ -58,6 +59,7 @@ load_modules() {
         "state.sh"         # 状态管理
         "env-check.sh"     # 环境检测
         "install.sh"       # 安装部署
+        "wireguard.sh"     # WireGuard VPN
         "config.sh"        # 配置管理
         "service.sh"       # 服务管理
         "snapshot.sh"      # 快照与回滚

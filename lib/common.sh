@@ -7,7 +7,7 @@
 # -----------------------------------------------
 # 全局常量
 # -----------------------------------------------
-readonly SCRIPT_VERSION="2.3.1"
+readonly SCRIPT_VERSION="2.4.0"
 readonly APP_NAME="hcp-simulator-lite"
 readonly APP_DIR="${HOME}/${APP_NAME}"
 readonly STATE_FILE="${HOME}/.hcp-deploy-state"

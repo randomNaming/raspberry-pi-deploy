@@ -229,24 +229,39 @@ check_network() {
 check_vpn() {
     print_step "检测WireGuard VPN"
 
-    # 检查VPN服务是否存在
-    if ! systemctl list-unit-files 2>/dev/null | grep -q "$VPN_SERVICE"; then
-        print_warn "WireGuard服务未配置（可选）"
-        return 0
+    # 检查是否已安装
+    if ! is_wireguard_installed 2>/dev/null; then
+        print_warn "WireGuard 未安装（部署时可自动安装）"
+        return 1
     fi
+    print_success "WireGuard 已安装"
 
-    # 检查VPN是否激活
-    if systemctl is-active --quiet "$VPN_SERVICE" 2>/dev/null; then
+    # 检查配置文件
+    if [ ! -f "/etc/wireguard/wg0.conf" ]; then
+        print_warn "配置文件不存在（部署时可自动生成）"
+        return 1
+    fi
+    print_info "配置文件: /etc/wireguard/wg0.conf"
+
+    # 检查VPN服务是否激活
+    if is_wireguard_running 2>/dev/null; then
         print_success "WireGuard VPN: 已激活"
 
         # 获取VPN IP地址
         local vpn_ip
-        vpn_ip=$(ip addr show wg0 2>/dev/null | grep inet | awk '{print $2}' | cut -d'/' -f1)
+        vpn_ip=$(get_vpn_ip 2>/dev/null)
         if [ -n "$vpn_ip" ]; then
             print_info "VPN IP: $vpn_ip"
         fi
+
+        # 测试连通性
+        if ping -c 1 -W 3 10.0.0.1 &>/dev/null; then
+            print_success "VPN 连通: 10.0.0.1 (可达)"
+        else
+            print_warn "VPN 连通: 10.0.0.1 (不可达)"
+        fi
     else
-        print_warn "WireGuard VPN: 未激活（可选，不影响部署）"
+        print_warn "WireGuard VPN: 未激活"
     fi
 
     return 0
