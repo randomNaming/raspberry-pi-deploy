@@ -548,15 +548,14 @@ manual_deploy() {
             local num=$((i+1))
             local status=""
             if [[ " ${completed[*]} " =~ " $i " ]]; then
-                status="${GREEN}[完成]${NC}"
+                status=" ${GREEN}[完成]${NC}"
             elif [[ " ${failed[*]} " =~ " $i " ]]; then
-                status="${RED}[失败]${NC}"
+                status=" ${RED}[失败]${NC}"
             fi
-            printf "  [%d] %-20s %s\n" "$num" "${options[$i]}" "$status"
+            echo -e "  [$num] ${options[$i]}${status}"
         done
 
         echo
-        local choice
         local choice
         safe_read_char "选择步骤 [1-${#options[@]}]" choice
         echo
