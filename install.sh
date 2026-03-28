@@ -3,13 +3,11 @@
 # HCP Simulator Lite - 一键安装引导脚本
 #
 # 使用方式：
+#   # Gitee (国内用户)
+#   bash <(curl -sL https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/install.sh)
+#
 #   # GitHub (海外用户)
 #   bash <(curl -sL https://raw.githubusercontent.com/randomNaming/raspberry-pi-deploy/main/install.sh)
-#
-#   # Gitee (国内用户，更快更稳定)
-#   bash <(curl -sL https://gitee.com/randomNaming/raspberry-pi-deploy/raw/main/install.sh)
-#
-# 功能：下载完整项目并启动部署管理器
 # =============================================================================
 
 set -uo pipefail
@@ -59,131 +57,209 @@ trap cleanup EXIT
 # -----------------------------------------------
 check_deps() {
     local missing=()
-    for cmd in curl tar bash; do
+    for cmd in curl bash; do
         if ! command -v "$cmd" &>/dev/null; then
             missing+=("$cmd")
         fi
     done
     if [ ${#missing[@]} -gt 0 ]; then
         print_error "缺少必要依赖: ${missing[*]}"
-        print_info "请先安装: sudo apt install -y ${missing[*]}"
         exit 1
     fi
 }
 
 # -----------------------------------------------
-# 测试源连通性
+# 获取远程版本号
 # -----------------------------------------------
-test_source() {
-    local url="$1"
-    local timeout="${2:-5}"
-    curl -sL --connect-timeout "$timeout" --max-time "$timeout" "$url" -o /dev/null 2>/dev/null
+get_remote_version() {
+    local source="$1"
+    local version_url=""
+    local version=""
+
+    if [ "$source" = "gitee" ]; then
+        version_url="https://gitee.com/${GITEE_USER}/${REPO_NAME}/raw/${BRANCH}/lib/common.sh?t=${CACHE_BUST}"
+    else
+        version_url="https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/${BRANCH}/lib/common.sh?t=${CACHE_BUST}"
+    fi
+
+    version=$(curl -sL --connect-timeout 10 --max-time 15 "$version_url" 2>/dev/null | grep "SCRIPT_VERSION" | cut -d'"' -f2)
+    echo "$version"
 }
 
 # -----------------------------------------------
-# 选择下载源
+# 获取本地版本号
 # -----------------------------------------------
-select_source() {
-    local source="${1:-}"
+get_local_version() {
+    if [ -f "$INSTALL_DIR/lib/common.sh" ]; then
+        grep "SCRIPT_VERSION" "$INSTALL_DIR/lib/common.sh" 2>/dev/null | cut -d'"' -f2
+    fi
+}
 
-    # 如果指定了源，直接使用
-    if [ -n "$source" ]; then
-        echo "$source"
+# -----------------------------------------------
+# 检测可用的源
+# -----------------------------------------------
+detect_source() {
+    print_info "检测可用源..."
+
+    # 测试 Gitee
+    if curl -sL --connect-timeout 5 --max-time 8 "https://gitee.com" -o /dev/null 2>/dev/null; then
+        echo "gitee"
         return
     fi
 
-    print_step "选择下载源"
-    echo
-    echo "  [1] Gitee (国内推荐，速度快)"
-    echo "  [2] GitHub (海外用户)"
-    echo "  [3] 自动检测"
-    echo
+    # 测试 GitHub
+    if curl -sL --connect-timeout 5 --max-time 8 "https://raw.githubusercontent.com" -o /dev/null 2>/dev/null; then
+        echo "github"
+        return
+    fi
 
-    read -p "选择 [1-3]: " -n 1 -r choice || choice="3"
-    echo
-
-    case $choice in
-        1)
-            echo "gitee"
-            return
-            ;;
-        2)
-            echo "github"
-            return
-            ;;
-        *)
-            # 自动检测
-            print_info "自动检测最佳源..."
-            if test_source "https://gitee.com" 3; then
-                print_success "Gitee 连通，使用 Gitee 源"
-                echo "gitee"
-            elif test_source "https://github.com" 5; then
-                print_success "GitHub 连通，使用 GitHub 源"
-                echo "github"
-            else
-                print_warn "自动检测失败，默认使用 Gitee"
-                echo "gitee"
-            fi
-            return
-            ;;
-    esac
+    echo ""
 }
 
 # -----------------------------------------------
-# 下载项目
+# 下载单个文件
 # -----------------------------------------------
-download_project() {
+download_file() {
+    local url="$1"
+    local output="$2"
+
+    if curl -sL --connect-timeout 15 --max-time 60 "$url" -o "$output" 2>/dev/null; then
+        if [ -s "$output" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# -----------------------------------------------
+# 下载项目（逐文件方式，更可靠）
+# -----------------------------------------------
+download_by_files() {
     local source="$1"
-    print_step "下载项目文件..."
+    local base_url=""
+
+    if [ "$source" = "gitee" ]; then
+        base_url="https://gitee.com/${GITEE_USER}/${REPO_NAME}/raw/${BRANCH}"
+    else
+        base_url="https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/${BRANCH}"
+    fi
+
+    print_info "逐文件下载..."
+
+    mkdir -p "$TEMP_DIR/lib"
+
+    # 下载主脚本
+    if ! download_file "${base_url}/deploy-interactive.sh?t=${CACHE_BUST}" "$TEMP_DIR/deploy-interactive.sh"; then
+        return 1
+    fi
+
+    # 下载 lib 目录下的所有脚本
+    local lib_files=(
+        "common.sh"
+        "state.sh"
+        "env-check.sh"
+        "install.sh"
+        "config.sh"
+        "service.sh"
+        "snapshot.sh"
+        "resume.sh"
+    )
+
+    for file in "${lib_files[@]}"; do
+        if ! download_file "${base_url}/lib/${file}?t=${CACHE_BUST}" "$TEMP_DIR/lib/${file}"; then
+            print_warn "下载失败: lib/${file}"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+# -----------------------------------------------
+# 下载项目（压缩包方式）
+# -----------------------------------------------
+download_by_archive() {
+    local source="$1"
+    local archive_url=""
+
+    if [ "$source" = "gitee" ]; then
+        archive_url="https://gitee.com/${GITEE_USER}/${REPO_NAME}/repository/archive/${BRANCH}?t=${CACHE_BUST}"
+    else
+        archive_url="https://github.com/${GITHUB_USER}/${REPO_NAME}/archive/refs/heads/${BRANCH}.tar.gz?t=${CACHE_BUST}"
+    fi
+
+    print_info "下载压缩包..."
 
     mkdir -p "$TEMP_DIR"
 
-    local archive_url=""
-    local success=false
-
-    if [ "$source" = "gitee" ]; then
-        # Gitee 下载地址（添加时间戳避免缓存）
-        archive_url="https://gitee.com/${GITEE_USER}/${REPO_NAME}/repository/archive/${BRANCH}?t=${CACHE_BUST}"
-        print_info "从 Gitee 下载..."
-
-        if curl -sL --connect-timeout 10 --max-time 120 "$archive_url" -o "$TEMP_DIR/archive.tar.gz" 2>/dev/null; then
-            # Gitee 的 tar 包格式略有不同
-            if tar xzf "$TEMP_DIR/archive.tar.gz" -C "$TEMP_DIR" --strip-components=1 2>/dev/null; then
-                success=true
-            fi
+    if download_file "$archive_url" "$TEMP_DIR/archive.tar.gz"; then
+        if tar xzf "$TEMP_DIR/archive.tar.gz" -C "$TEMP_DIR" --strip-components=1 2>/dev/null; then
             rm -f "$TEMP_DIR/archive.tar.gz"
-        fi
-
-        # 如果 Gitee 失败，尝试 GitHub
-        if [ "$success" = false ]; then
-            print_warn "Gitee 下载失败，尝试 GitHub..."
-            source="github"
+            return 0
         fi
     fi
 
-    if [ "$source" = "github" ]; then
-        # GitHub 下载地址（添加时间戳避免缓存）
-        archive_url="https://github.com/${GITHUB_USER}/${REPO_NAME}/archive/refs/heads/${BRANCH}.tar.gz?t=${CACHE_BUST}"
-        print_info "从 GitHub 下载..."
+    rm -f "$TEMP_DIR/archive.tar.gz"
+    return 1
+}
 
-        if curl -sL --connect-timeout 10 --max-time 120 "$archive_url" | tar xz -C "$TEMP_DIR" --strip-components=1 2>/dev/null; then
-            success=true
+# -----------------------------------------------
+# 下载项目（主函数）
+# -----------------------------------------------
+download_project() {
+    local source="${1:-}"
+    print_step "下载项目文件..."
+
+    # 如果没有指定源，自动检测
+    if [ -z "$source" ]; then
+        source=$(detect_source)
+        if [ -z "$source" ]; then
+            print_error "无法连接到任何源，请检查网络"
+            exit 1
+        fi
+        print_success "使用源: $source"
+    fi
+
+    # 方式1: 尝试压缩包下载
+    if download_by_archive "$source"; then
+        # 验证关键文件
+        if [ -f "$TEMP_DIR/deploy-interactive.sh" ] && [ -d "$TEMP_DIR/lib" ]; then
+            print_success "下载完成 (压缩包方式)"
+            return 0
         fi
     fi
 
-    # 验证下载结果
-    if [ "$success" = false ] || [ ! -f "$TEMP_DIR/deploy-interactive.sh" ]; then
-        print_error "下载失败，请检查网络连接"
-        print_info "可手动下载后放置到: $INSTALL_DIR"
-        exit 1
+    # 方式2: 尝试逐文件下载
+    print_warn "压缩包下载失败，尝试逐文件下载..."
+    rm -rf "$TEMP_DIR"/*
+
+    if download_by_files "$source"; then
+        if [ -f "$TEMP_DIR/deploy-interactive.sh" ] && [ -d "$TEMP_DIR/lib" ]; then
+            print_success "下载完成 (逐文件方式)"
+            return 0
+        fi
     fi
 
-    if [ ! -d "$TEMP_DIR/lib" ]; then
-        print_error "下载不完整，未找到 lib 目录"
-        exit 1
+    # 如果当前源失败，尝试另一个源
+    local other_source=""
+    if [ "$source" = "gitee" ]; then
+        other_source="github"
+    else
+        other_source="gitee"
     fi
 
-    print_success "项目下载完成 (来源: $source)"
+    print_warn "当前源失败，尝试 $other_source..."
+    rm -rf "$TEMP_DIR"/*
+
+    if download_by_archive "$other_source" || download_by_files "$other_source"; then
+        if [ -f "$TEMP_DIR/deploy-interactive.sh" ] && [ -d "$TEMP_DIR/lib" ]; then
+            print_success "下载完成 (备用源: $other_source)"
+            return 0
+        fi
+    fi
+
+    print_error "所有下载方式均失败"
+    exit 1
 }
 
 # -----------------------------------------------
@@ -194,7 +270,7 @@ install_local() {
 
     # 清理旧版本
     if [ -d "$INSTALL_DIR" ]; then
-        print_info "检测到旧版本，正在更新..."
+        print_info "清理旧版本..."
         rm -rf "$INSTALL_DIR"
     fi
 
@@ -206,9 +282,51 @@ install_local() {
 
     # 设置执行权限
     chmod +x "$INSTALL_DIR/deploy-interactive.sh"
-    chmod +x "$INSTALL_DIR"/lib/*.sh
+    chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
 
-    print_success "安装完成: $INSTALL_DIR"
+    local version
+    version=$(get_local_version)
+    print_success "安装完成: $INSTALL_DIR (版本: ${version:-未知})"
+}
+
+# -----------------------------------------------
+# 创建快捷命令
+# -----------------------------------------------
+create_alias() {
+    local alias_file="${HOME}/.bashrc"
+
+    # 移除旧别名
+    if grep -q "hcp-deploy\|hcp-update" "$alias_file" 2>/dev/null; then
+        sed -i '/hcp-deploy\|hcp-update/d' "$alias_file" 2>/dev/null || true
+    fi
+
+    # 添加新别名
+    cat >> "$alias_file" << 'EOF'
+
+# HCP Simulator Lite
+alias hcp-deploy='bash ~/.hcp-deploy/deploy-interactive.sh'
+alias hcp-update='bash ~/.hcp-deploy/install.sh'
+EOF
+
+    print_info "快捷命令: hcp-deploy (运行) / hcp-update (更新)"
+}
+
+# -----------------------------------------------
+# 显示使用说明
+# -----------------------------------------------
+show_usage() {
+    local version
+    version=$(get_local_version)
+
+    echo
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}  HCP Simulator Lite 安装完成${NC}"
+    echo -e "${BLUE}  版本: ${version}${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo
+    echo "运行命令: hcp-deploy"
+    echo "更新命令: hcp-update"
+    echo
 }
 
 # -----------------------------------------------
@@ -223,74 +341,44 @@ run_deployer() {
 }
 
 # -----------------------------------------------
-# 显示使用说明
-# -----------------------------------------------
-show_usage() {
-    echo
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}  HCP Simulator Lite 安装完成${NC}"
-    echo -e "${BLUE}========================================${NC}"
-    echo
-    echo "快捷命令运行："
-    echo
-    echo "  hcp-deploy"
-    echo
-    echo "或直接运行："
-    echo
-    echo "  bash ~/.hcp-deploy/deploy-interactive.sh"
-    echo
-    echo "更新命令："
-    echo
-    echo "  # Gitee 源"
-    echo "  rm -rf ~/.hcp-deploy && bash <(curl -sL https://gitee.com/${GITEE_USER}/${REPO_NAME}/raw/main/install.sh)"
-    echo
-    echo "  # GitHub 源"
-    echo "  rm -rf ~/.hcp-deploy && bash <(curl -sL https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/main/install.sh)"
-    echo
-}
-
-# -----------------------------------------------
-# 创建快捷命令
-# -----------------------------------------------
-create_alias() {
-    local alias_file="${HOME}/.bashrc"
-
-    # 移除旧别名（如果存在）
-    if grep -q "hcp-deploy" "$alias_file" 2>/dev/null; then
-        sed -i '/hcp-deploy/d' "$alias_file" 2>/dev/null || true
-    fi
-
-    # 添加新别名
-    cat >> "$alias_file" << EOF
-
-# HCP Simulator Lite 部署工具
-alias hcp-deploy='bash ~/.hcp-deploy/deploy-interactive.sh'
-alias hcp-update='rm -rf ~/.hcp-deploy && bash <(curl -sL https://gitee.com/${GITEE_USER}/${REPO_NAME}/raw/main/install.sh)'
-EOF
-
-    print_info "已添加快捷命令:"
-    print_info "  hcp-deploy  - 运行部署工具"
-    print_info "  hcp-update  - 一键更新"
-    print_info "请执行: source ~/.bashrc 或重新登录以生效"
-}
-
-# -----------------------------------------------
 # 主程序
 # -----------------------------------------------
 main() {
     echo
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}  HCP Simulator Lite${NC}"
-    echo -e "${BLUE}  一键安装引导程序${NC}"
+    echo -e "${BLUE}  安装/更新程序${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo
 
     # 检查依赖
     check_deps
 
+    # 检查本地版本
+    local local_version
+    local_version=$(get_local_version)
+
+    if [ -n "$local_version" ]; then
+        print_info "当前本地版本: $local_version"
+    fi
+
     # 选择下载源
-    local source
-    source=$(select_source "${1:-}")
+    local source="${1:-}"
+    if [ -z "$source" ]; then
+        echo "  选择下载源:"
+        echo "  [1] 自动检测 (推荐)"
+        echo "  [2] Gitee (国内)"
+        echo "  [3] GitHub (海外)"
+        echo
+        read -p "选择 [1-3]: " -n 1 -r choice || choice="1"
+        echo
+
+        case $choice in
+            2) source="gitee" ;;
+            3) source="github" ;;
+            *) source="" ;;  # 自动检测
+        esac
+    fi
 
     # 下载项目
     download_project "$source"
@@ -312,7 +400,7 @@ main() {
         run_deployer
     else
         echo
-        print_success "安装完成，稍后运行: hcp-deploy"
+        print_success "安装完成，运行: hcp-deploy"
     fi
 }
 

@@ -166,7 +166,49 @@ show_rollback_menu() {
 }
 
 # -----------------------------------------------
-# 清理函数（脚本退出时调用）
+# 检测更新
+# -----------------------------------------------
+check_update() {
+    # 检查网络可用源
+    local remote_url=""
+
+    if curl -sL --connect-timeout 3 --max-time 5 "https://gitee.com" -o /dev/null 2>/dev/null; then
+        remote_url="https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/lib/common.sh?t=$(date +%s)"
+    elif curl -sL --connect-timeout 3 --max-time 5 "https://raw.githubusercontent.com" -o /dev/null 2>/dev/null; then
+        remote_url="https://raw.githubusercontent.com/randomNaming/raspberry-pi-deploy/main/lib/common.sh?t=$(date +%s)"
+    else
+        return 0  # 网络不通，跳过检测
+    fi
+
+    # 获取远程版本
+    local remote_version
+    remote_version=$(curl -sL --connect-timeout 5 --max-time 10 "$remote_url" 2>/dev/null | grep "SCRIPT_VERSION" | cut -d'"' -f2)
+
+    if [ -z "$remote_version" ]; then
+        return 0  # 获取失败，跳过
+    fi
+
+    # 比较版本
+    if [ "$remote_version" != "$SCRIPT_VERSION" ]; then
+        echo
+        print_warn "发现新版本: $SCRIPT_VERSION -> $remote_version"
+        if confirm "是否立即更新?" "y"; then
+            echo
+            print_step "正在更新..."
+
+            # 下载安装脚本并执行
+            if [ -f "$SCRIPT_DIR/install.sh" ]; then
+                bash "$SCRIPT_DIR/install.sh"
+            else
+                bash <(curl -sL "$remote_url" | sed 's/common.sh/install.sh/' | head -1)
+            fi
+            exit 0
+        fi
+    fi
+}
+
+# -----------------------------------------------
+# 清理
 # -----------------------------------------------
 cleanup() {
     cleanup_temp
@@ -193,6 +235,9 @@ main() {
     print_info "目标平台: 树莓派4B (Raspberry Pi OS)"
     print_info "应用: $APP_NAME"
     echo
+
+    # 检测更新
+    check_update
 
     # 检查运行环境
     if ! check_root; then
