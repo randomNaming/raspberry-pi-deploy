@@ -743,21 +743,47 @@ auto_deploy() {
     snapshot_id=$(create_snapshot)
     echo
 
-    # 步骤3: WireGuard VPN
+    # 步骤3: WireGuard VPN（必须配置）
     ((current_step++))
     print_step "步骤 $current_step/$total_steps: WireGuard VPN"
 
     if is_wireguard_installed 2>/dev/null && is_wireguard_running 2>/dev/null; then
         print_info "WireGuard 已安装并运行"
-    elif confirm "配置 WireGuard VPN?" "y"; then
-        if ! setup_wireguard_wizard; then
-            print_warn "WireGuard 配置未完成，服务可能无法连接 Nacos"
-            if ! confirm "继续部署?" "n"; then
-                return 1
+
+        # 验证VPN连通性
+        if ping -c 1 -W 3 10.0.0.1 &>/dev/null; then
+            print_success "VPN 连通性正常"
+        else
+            print_warn "VPN 无法连接服务器 (10.0.0.1)"
+            print_info "请检查服务器端是否已添加本机公钥"
+            if confirm "重新配置 WireGuard?" "y"; then
+                if ! setup_wireguard_wizard; then
+                    print_error "WireGuard 配置失败，无法继续部署"
+                    return 1
+                fi
             fi
         fi
     else
-        print_info "跳过 WireGuard 配置"
+        print_info "WireGuard 是必需的，用于连接内网服务器"
+        if ! setup_wireguard_wizard; then
+            print_error "WireGuard 配置失败，无法继续部署"
+            return 1
+        fi
+
+        # 验证VPN连通性
+        print_info "验证VPN连通性..."
+        if ! ping -c 3 -W 5 10.0.0.1 &>/dev/null; then
+            print_error "VPN 无法连接服务器 (10.0.0.1)"
+            print_info "请检查:"
+            print_info "  1. 服务器端是否已添加本机公钥"
+            print_info "  2. 服务器安全组是否开放 UDP 51820"
+            print_info "  3. WireGuard配置是否正确"
+            if ! confirm "跳过VPN检查继续部署?" "n"; then
+                return 1
+            fi
+        else
+            print_success "VPN 连通性正常"
+        fi
     fi
     mark_complete "wireguard"
 
@@ -812,13 +838,16 @@ auto_deploy() {
     deploy_service
     mark_complete "deploy_service"
 
-    # 步骤9: 配置并启动
+    # 步骤9: 启动服务
     ((current_step++))
-    print_step "步骤 $current_step/$total_steps: 配置并启动服务"
+    print_step "步骤 $current_step/$total_steps: 启动服务"
 
-    echo
-    if confirm "运行配置向导?" "y"; then
-        run_config_wizard
+    # 检查配置是否存在
+    if [ ! -f "$APP_DIR/config/application-prod.yml" ] && [ ! -f "$APP_DIR/config/application.yml" ]; then
+        print_warn "未找到配置文件"
+        if confirm "运行配置向导?" "y"; then
+            run_config_wizard
+        fi
     fi
 
     if ! start_service; then
