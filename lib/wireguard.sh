@@ -48,11 +48,10 @@ check_wireguard() {
     print_success "WireGuard 已安装"
 
     # 检查配置文件
-    if [ ! -f "$WG_CONF_FILE" ]; then
-        print_warn "配置文件不存在: $WG_CONF_FILE"
+    if ! run_as_root test -f "$WG_CONF_FILE"; then
+        print_warn "配置文件不存在（部署时可自动生成）"
         return 1
     fi
-
     print_info "配置文件: $WG_CONF_FILE"
 
     # 检查服务状态
@@ -215,7 +214,7 @@ configure_wireguard() {
     done
 
     # 创建配置目录
-    ensure_dir "$WG_CONF_DIR"
+    run_as_root mkdir -p "$WG_CONF_DIR"
 
     # 写入配置文件
     local conf_content="[Interface]
@@ -229,7 +228,13 @@ AllowedIPs = 10.0.0.0/24
 PersistentKeepalive = 25
 "
 
+    # tee 的退出码会被管道吞掉，用 PIPESTATUS 检查
     echo "$conf_content" | run_as_root tee "$WG_CONF_FILE" > /dev/null
+    if [ "${PIPESTATUS[1]}" -ne 0 ]; then
+        print_error "配置文件写入失败"
+        return 1
+    fi
+
     run_as_root chmod 600 "$WG_CONF_FILE"
 
     # 保存到临时文件供 systemd 服务使用
@@ -250,11 +255,11 @@ configure_wireguard_quick() {
     local server_pubkey="$2"
     local server_endpoint="${3:-}"
 
-    ensure_dir "$WG_CONF_DIR"
+    run_as_root mkdir -p "$WG_CONF_DIR"
 
     # 获取私钥
     local private_key=""
-    if [ -f "${WG_CONF_DIR}/pi_private.key" ]; then
+    if run_as_root test -f "${WG_CONF_DIR}/pi_private.key"; then
         private_key=$(run_as_root cat "${WG_CONF_DIR}/pi_private.key")
     else
         print_error "未找到私钥，请先生成密钥对"
@@ -292,7 +297,7 @@ EOF
 start_wireguard() {
     print_step "启动 WireGuard 服务"
 
-    if [ ! -f "$WG_CONF_FILE" ]; then
+    if ! run_as_root test -f "$WG_CONF_FILE"; then
         print_error "配置文件不存在: $WG_CONF_FILE"
         print_info "请先执行 WireGuard 配置"
         return 1
