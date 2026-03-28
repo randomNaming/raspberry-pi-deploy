@@ -293,39 +293,53 @@ install_local() {
 # 创建快捷命令
 # -----------------------------------------------
 create_alias() {
-    # 方式1: 创建到 /usr/local/bin/ (全局可用)
-    if [ -d "/usr/local/bin" ]; then
-        cat > /tmp/hcp-deploy-wrapper << 'WRAPPER'
-#!/bin/bash
-exec bash "${HOME}/.hcp-deploy/deploy-interactive.sh" "$@"
-WRAPPER
-        chmod +x /tmp/hcp-deploy-wrapper
+    # 清理旧的 bashrc 别名
+    if [ -f "${HOME}/.bashrc" ]; then
+        sed -i '/hcp-deploy\|hcp-update\|HCP Simulator/d' "${HOME}/.bashrc" 2>/dev/null || true
+    fi
 
+    # 创建 hcp-deploy 命令
+    local deploy_cmd="#!/bin/bash
+exec bash \"${INSTALL_DIR}/deploy-interactive.sh\" \"\$@\""
+
+    # 创建 hcp-update 命令
+    local update_cmd="#!/bin/bash
+rm -rf \"${INSTALL_DIR}\"
+bash <(curl -sL https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/install.sh) \"\$@\""
+
+    # 优先创建到 /usr/local/bin/
+    if [ -d "/usr/local/bin" ]; then
         if [ "$(id -u)" -eq 0 ]; then
-            mv /tmp/hcp-deploy-wrapper /usr/local/bin/hcp-deploy 2>/dev/null && \
-            print_info "全局命令已创建: hcp-deploy" && return 0
-        else
-            sudo mv /tmp/hcp-deploy-wrapper /usr/local/bin/hcp-deploy 2>/dev/null && \
-            print_info "全局命令已创建: hcp-deploy" && return 0
+            echo "$deploy_cmd" > /usr/local/bin/hcp-deploy
+            echo "$update_cmd" > /usr/local/bin/hcp-update
+            chmod +x /usr/local/bin/hcp-deploy /usr/local/bin/hcp-update
+            print_info "命令已创建: /usr/local/bin/hcp-deploy"
+            print_info "命令已创建: /usr/local/bin/hcp-update"
+            return 0
+        elif command -v sudo &>/dev/null; then
+            echo "$deploy_cmd" | sudo tee /usr/local/bin/hcp-deploy > /dev/null
+            echo "$update_cmd" | sudo tee /usr/local/bin/hcp-update > /dev/null
+            sudo chmod +x /usr/local/bin/hcp-deploy /usr/local/bin/hcp-update
+            print_info "命令已创建: /usr/local/bin/hcp-deploy"
+            print_info "命令已创建: /usr/local/bin/hcp-update"
+            return 0
         fi
     fi
 
-    # 方式2: 创建到 ~/bin/ (用户目录)
+    # 降级方案: 创建到 ~/bin/
     mkdir -p "${HOME}/bin"
-    cat > "${HOME}/bin/hcp-deploy" << 'WRAPPER'
-#!/bin/bash
-exec bash "${HOME}/.hcp-deploy/deploy-interactive.sh" "$@"
-WRAPPER
-    chmod +x "${HOME}/bin/hcp-deploy"
+    echo "$deploy_cmd" > "${HOME}/bin/hcp-deploy"
+    echo "$update_cmd" > "${HOME}/bin/hcp-update"
+    chmod +x "${HOME}/bin/hcp-deploy" "${HOME}/bin/hcp-update"
 
-    # 检查 ~/bin 是否在 PATH 中
+    # 确保 ~/bin 在 PATH 中
     if [[ ":$PATH:" != *":${HOME}/bin:"* ]]; then
         echo 'export PATH="${HOME}/bin:${PATH}"' >> "${HOME}/.bashrc"
-        print_info "已添加 ~/bin 到 PATH"
+        print_info "已添加 ~/bin 到 PATH，请执行: source ~/.bashrc"
     fi
 
     print_info "命令已创建: ${HOME}/bin/hcp-deploy"
-    print_info "请执行: source ~/.bashrc 或重新登录"
+    print_info "命令已创建: ${HOME}/bin/hcp-update"
 }
 
 # -----------------------------------------------
