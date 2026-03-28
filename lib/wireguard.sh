@@ -207,9 +207,12 @@ configure_wireguard() {
     # 服务器地址
     local server_endpoint=""
     while [ -z "$server_endpoint" ]; do
-        server_endpoint=$(safe_read "服务器地址 (IP:端口)" "")
+        server_endpoint=$(safe_read "服务器地址 (IP:端口, 如 1.2.3.4:51820)" "")
         if [ -z "$server_endpoint" ]; then
             print_warn "服务器地址不能为空"
+        elif ! [[ "$server_endpoint" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]]; then
+            print_warn "格式错误，正确格式: IP:端口 (如 1.2.3.4:51820)"
+            server_endpoint=""
         fi
     done
 
@@ -324,7 +327,15 @@ start_wireguard() {
         return 0
     else
         print_error "WireGuard 服务启动失败"
-        print_info "查看日志: sudo journalctl -u wg-quick@wg0 -n 20"
+        echo
+        print_info "最近日志:"
+        run_as_root journalctl -u wg-quick@wg0 -n 10 --no-pager 2>/dev/null || true
+        echo
+        print_info "常见原因:"
+        print_info "  1. Endpoint 格式错误 (需 IP:端口)"
+        print_info "  2. AllowedIPs 格式错误"
+        print_info "  3. PrivateKey 无效"
+        print_info "查看详细日志: sudo journalctl -u wg-quick@wg0 -n 30"
         return 1
     fi
 }
