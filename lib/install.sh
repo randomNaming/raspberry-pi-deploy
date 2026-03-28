@@ -349,74 +349,255 @@ deploy_config() {
 
     local config_path=""
 
-    # 搜索配置文件
+    # 搜索配置文件（优先查找 application-prod.yml）
     for dir in "$SCRIPT_DIR" "." "$HOME"; do
-        if [ -f "$dir/application.yml" ]; then
+        if [ -f "$dir/application-prod.yml" ]; then
+            config_path="$dir/application-prod.yml"
+            break
+        elif [ -f "$dir/application.yml" ]; then
             config_path="$dir/application.yml"
             break
         fi
     done
 
-    if [ -z "$config_path" ]; then
-        print_warn "未找到配置文件，将创建默认配置"
-        create_default_config
+    # 如果找到的是 application.yml，检查是否已有 application-prod.yml
+    if [ -f "$config_path" ] && [ "$(basename "$config_path")" = "application-prod.yml" ]; then
+        ensure_dir "$APP_DIR/config"
+        cp "$config_path" "$APP_DIR/config/application-prod.yml"
+        chown "$(whoami):$(id -gn)" "$APP_DIR/config/application-prod.yml"
+        print_info "已复制: application-prod.yml"
+
+        # 同时复制 bootstrap.yml（如果有）
+        for dir in "$SCRIPT_DIR" "." "$HOME"; do
+            if [ -f "$dir/bootstrap.yml" ]; then
+                cp "$dir/bootstrap.yml" "$APP_DIR/config/bootstrap.yml"
+                chown "$(whoami):$(id -gn)" "$APP_DIR/config/bootstrap.yml"
+                print_info "已复制: bootstrap.yml"
+                break
+            fi
+        done
+
+        print_success "配置部署完成"
+        return 0
+    elif [ -f "$config_path" ]; then
+        # 旧版 application.yml 格式
+        ensure_dir "$APP_DIR/config"
+        cp "$config_path" "$APP_DIR/config/application.yml"
+        chown "$(whoami):$(id -gn)" "$APP_DIR/config/application.yml"
+        print_info "已复制: application.yml (旧版格式)"
+        print_success "配置部署完成"
         return 0
     fi
 
-    print_info "源文件: $config_path"
-    print_info "目标: $APP_DIR/config/application.yml"
-
-    cp "$config_path" "$APP_DIR/config/application.yml"
-    chown "$(whoami):$(id -gn)" "$APP_DIR/config/application.yml"
-
-    print_success "配置部署完成"
+    # 未找到配置文件，运行交互式向导
+    print_warn "未找到配置文件，将进入配置向导"
+    create_default_config
     return 0
 }
 
 # -----------------------------------------------
-# 创建默认配置文件
+# 创建配置文件（交互式）
 # -----------------------------------------------
 create_default_config() {
-    cat > "$APP_DIR/config/application.yml" << 'EOF'
+    print_header "创建配置文件"
+
+    # 交互式输入桩信息（非交互环境跳过）
+    local pile_codes=()
+    local pile_guns=()
+    local instance_id="pi-01"
+    local ykc_host="121.43.69.62"
+    local ykc_port="8767"
+    local protocol_version="V160"
+    local software_version="V1.6.0"
+
+    if [[ -t 0 ]]; then
+        echo
+        print_info "请输入云快充平台连接参数"
+        echo
+
+        # 服务器配置
+        ykc_host=$(safe_read "服务器地址" "$ykc_host")
+        ykc_port=$(safe_read "服务器端口" "$ykc_port")
+        protocol_version=$(safe_read "协议版本" "$protocol_version")
+        software_version=$(safe_read "软件版本" "$software_version")
+
+        # 实例ID
+        echo
+        instance_id=$(safe_read "实例ID" "$instance_id")
+
+        # 桩配置
+        echo
+        echo -e "${CYAN}--- 桩号配置 ---${NC}"
+        echo -e "${GREEN}[说明]${NC} 输入起始桩号和连续数量，自动生成连续桩号"
+        echo -e "${GREEN}[说明]${NC} 例：起始桩号 32010601135756，数量 3，生成 5756/5757/5758"
+        echo
+
+        while true; do
+            local start_code
+            start_code=$(safe_read "起始桩号(14位数字，留空结束)" "")
+
+            # 空输入退出
+            if [ -z "$start_code" ]; then
+                # 如果已配置桩，退出循环
+                if [ ${#pile_codes[@]} -gt 0 ]; then
+                    break
+                fi
+                # 未配置桩时必须输入
+                print_warn "至少需要配置一个桩号"
+                continue
+            fi
+
+            # 验证桩号格式（14位纯数字）
+            if ! [[ "$start_code" =~ ^[0-9]{14}$ ]]; then
+                print_error "桩号必须是14位纯数字"
+                continue
+            fi
+
+            # 输入数量
+            local pile_count
+            pile_count=$(safe_read "连续桩数量" "1")
+            if ! [[ "$pile_count" =~ ^[0-9]+$ ]] || [ "$pile_count" -lt 1 ]; then
+                print_error "数量必须是正整数"
+                continue
+            fi
+
+            # 输入枪号
+            local gun_input
+            gun_input=$(safe_read "枪号(空格分隔)" "01 02")
+            gun_input=${gun_input:-"01 02"}
+
+            # 生成连续桩号
+            local code_len=${#start_code}
+            local suffix_digits=2
+            local prefix="${start_code:0:$((code_len - suffix_digits))}"
+            local last_part="${start_code:$((code_len - suffix_digits))}"
+            local base=$((10#$last_part))
+
+            for ((i=0; i<pile_count; i++)); do
+                local seq=$((base + i))
+                local code
+                if [ "$seq" -lt 100 ]; then
+                    # 正常情况：补齐2位，总长度不变
+                    code="${prefix}$(printf '%02d' $seq)"
+                else
+                    # 溢出：缩减前缀1位，用3位数字，保持总长度不变
+                    local smaller_prefix="${prefix:0:$((code_len - suffix_digits - 1))}"
+                    code="${smaller_prefix}$(printf '%03d' $seq)"
+                fi
+                pile_codes+=("$code")
+                pile_guns+=("$gun_input")
+                echo -e "  ${GREEN}+${NC} $code  枪号: $gun_input"
+            done
+            echo
+        done
+    else
+        # 非交互环境使用默认值
+        pile_codes=("32010601122277" "32010601122278")
+        pile_guns=("01 02" "01 02")
+        print_warn "非交互环境，使用默认桩配置"
+    fi
+
+    # ---- 生成 application-prod.yml ----
+    local prod_file="$APP_DIR/config/application-prod.yml"
+    ensure_dir "$APP_DIR/config"
+
+    cat > "$prod_file" << EOF
 server:
   port: 18080
 
+# 生产环境配置
+
+# 模拟器实例标识（每台树莓派设置不同的值，如 pi-01、pi-02）
+simulator-lite:
+  instance-id: \${SIMULATOR_INSTANCE_ID:${instance_id}}
+
+# 云快充平台模拟桩配置
+ykc:
+  # 生产环境：应用启动时自动启动所有配置的充电桩
+  auto-start: true
+  server:
+    host: ${ykc_host}
+    port: ${ykc_port}
+  protocol-version: ${protocol_version}
+  software-version: "${software_version}"
+  # 桩配置列表（每桩可配多把枪）
+EOF
+
+    # 写入桩配置
+    for i in "${!pile_codes[@]}"; do
+        local pile="${pile_codes[$i]}"
+        local guns="${pile_guns[$i]}"
+
+        cat >> "$prod_file" << EOF
+    - pile-code: "$pile"
+EOF
+
+        # 将空格分隔的枪号转为YAML数组格式
+        local yaml_guns="["
+        local first=true
+        for gun in $guns; do
+            if [ "$first" = true ]; then
+                first=false
+            else
+                yaml_guns="${yaml_guns}, "
+            fi
+            yaml_guns="${yaml_guns}\"$gun\""
+        done
+        yaml_guns="${yaml_guns}]"
+        echo "      guns: $yaml_guns" >> "$prod_file"
+    done
+
+    print_success "已创建: $prod_file"
+
+    # ---- 生成 bootstrap.yml ----
+    local bootstrap_file="$APP_DIR/config/bootstrap.yml"
+
+    cat > "$bootstrap_file" << 'EOF'
 spring:
   application:
     name: hcp-simulator-lite
-  datasource:
-    driver-class-name: org.sqlite.JDBC
-    url: jdbc:sqlite:./data/simulator.db
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:schema.sql
-      continue-on-error: true
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
+  # 建议通过启动参数或环境变量覆盖：
+  #   -Dspring.profiles.active=dev 或 prod
+  # 这里给一个默认值，方便本地开发
+  profiles:
+    active: prod
 
-# 云快充平台连接配置
-ykc:
-  server:
-    host: 121.43.69.62
-    port: 8767
-  protocol-version: V160
-  software-version: "V1.6.0"
-  # 桩配置列表（每桩可配多把枪）
-  piles:
-    - pile-code: "32010601122277"
-      guns: ["01", "02"]
-    - pile-code: "32010601122278"
-      guns: ["01", "02"]
+  cloud:
+    nacos:
+      # Nacos 服务注册发现（网关通过服务名发现 simulator-lite 实例）
+      discovery:
+        server-addr: ${NACOS_HOST:127.0.0.1}:${NACOS_PORT:8848}
+        namespace: hcp
+      # Nacos 配置中心（加载 application-dev.yml / application-prod.yml 等改为从 Nacos 读取）
+      config:
+        server-addr: ${spring.cloud.nacos.discovery.server-addr}
+        file-extension: yml
+        namespace: hcp
+
+        # 公共配置（所有环境共享），对应 Nacos 中 dataId = hcp-simulator-lite.yml
+        shared-configs:
+          - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+          - data-id: ${spring.application.name}.${spring.cloud.nacos.config.file-extension}
+            refresh: true
 EOF
 
-    chown "$(whoami):$(id -gn)" "$APP_DIR/config/application.yml"
-    print_info "默认配置文件已创建: $APP_DIR/config/application.yml"
-    print_warn "请根据实际情况修改配置文件中的桩信息"
+    print_success "已创建: $bootstrap_file"
+
+    # 同时创建兼容旧版 application.yml（指向 prod profile）
+    local app_file="$APP_DIR/config/application.yml"
+    cat > "$app_file" << 'EOF'
+spring:
+  profiles:
+    active: prod
+EOF
+
+    print_info "配置文件创建完成:"
+    print_info "  - application-prod.yml  (主配置)"
+    print_info "  - bootstrap.yml         (Nacos配置)"
+    print_info "  - application.yml       (Profile入口)"
+    echo
+    print_warn "请确认桩号配置是否正确，如需修改可直接编辑配置文件"
 }
 
 # -----------------------------------------------
@@ -505,9 +686,14 @@ verify_deployment() {
 
     echo
     print_info "3. 检查配置文件..."
-    if [ -f "$APP_DIR/config/application.yml" ]; then
-        print_success "配置文件存在"
-    else
+    local config_found=false
+    for f in application-prod.yml application.yml bootstrap.yml; do
+        if [ -f "$APP_DIR/config/$f" ]; then
+            print_success "配置文件存在: $f"
+            config_found=true
+        fi
+    done
+    if [ "$config_found" = false ]; then
         print_error "配置文件缺失"
     fi
 
