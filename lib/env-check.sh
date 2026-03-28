@@ -321,8 +321,9 @@ detect_installation() {
         info="${info}\n  - 配置文件: 不存在"
     fi
 
-    # 检查systemd服务
-    if systemctl list-unit-files 2>/dev/null | grep -q "${SERVICE_NAME}"; then
+    # 检查systemd服务（优先检查服务文件是否存在，兼容非root用户）
+    local service_file="/etc/systemd/system/${SERVICE_NAME}"
+    if [ -f "$service_file" ] || systemctl list-unit-files 2>/dev/null | grep -q "${SERVICE_NAME}"; then
         if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
             info="${info}\n  - 服务状态: 运行中"
         else

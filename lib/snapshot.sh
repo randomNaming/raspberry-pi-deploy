@@ -192,12 +192,118 @@ update_app_only() {
 reset_config() {
     print_step "重置配置"
 
-    if confirm "重置为默认配置?" "n"; then
-        create_snapshot
-        create_default_config
-        print_success "配置已重置为默认值"
-        print_info "请使用配置管理重新配置"
+    echo
+    echo "  [1] 重置应用配置"
+    echo "  [2] 重置 WireGuard 配置"
+    echo "  [3] 重置全部配置"
+    echo "  [0] 取消"
+    echo
+
+    local choice
+    safe_read_char "选择 [0-3]" choice
+
+    case $choice in
+        1)
+            if confirm "重置应用配置为默认值?" "n"; then
+                create_snapshot
+                create_default_config
+                print_success "应用配置已重置为默认值"
+                print_info "请使用配置管理重新配置"
+            fi
+            ;;
+        2)
+            reset_wireguard_config
+            ;;
+        3)
+            if confirm "重置全部配置（应用 + WireGuard）?" "n"; then
+                create_snapshot
+                create_default_config
+                print_success "应用配置已重置为默认值"
+                reset_wireguard_config
+                print_success "全部配置已重置"
+            fi
+            ;;
+        0)
+            print_info "已取消"
+            ;;
+        *)
+            print_error "无效选择"
+            ;;
+    esac
+}
+
+# -----------------------------------------------
+# 重置 WireGuard 配置
+# -----------------------------------------------
+reset_wireguard_config() {
+    print_step "重置 WireGuard 配置"
+
+    if ! is_wireguard_installed; then
+        print_warn "WireGuard 未安装"
+        return 1
     fi
+
+    # 停止 WireGuard 服务
+    if is_wireguard_running; then
+        print_info "停止 WireGuard 服务..."
+        run_as_root systemctl stop wg-quick@wg0 2>/dev/null || true
+    fi
+
+    # 备份现有配置
+    local backup_file="${BACKUP_DIR}/wg0.conf.$(get_timestamp)"
+    if [ -f "$WG_CONF_FILE" ]; then
+        run_as_root cp "$WG_CONF_FILE" "$backup_file" 2>/dev/null || true
+        print_info "配置已备份: $backup_file"
+    fi
+
+    # 删除配置文件
+    run_as_root rm -f "$WG_CONF_FILE" 2>/dev/null || true
+
+    # 生成新的密钥对
+    print_info "生成新的密钥对..."
+    local private_key public_key
+    private_key=$(wg genkey)
+    public_key=$(echo "$private_key" | wg pubkey)
+
+    if [ -z "$private_key" ] || [ -z "$public_key" ]; then
+        print_error "密钥生成失败"
+        return 1
+    fi
+
+    # 保存密钥
+    run_as_root mkdir -p "$WG_CONF_DIR"
+    echo "$private_key" | run_as_root tee "${WG_CONF_DIR}/pi_private.key" > /dev/null
+    echo "$public_key" | run_as_root tee "${WG_CONF_DIR}/pi_public.key" > /dev/null
+    run_as_root chmod 600 "${WG_CONF_DIR}/pi_private.key"
+    run_as_root chmod 644 "${WG_CONF_DIR}/pi_public.key"
+
+    # 获取VPN IP
+    local vpn_ip="10.0.0.2"
+    if [[ -t 0 ]]; then
+        vpn_ip=$(safe_read "本机 VPN IP (如 10.0.0.2)" "10.0.0.2")
+    fi
+
+    print_success "WireGuard 配置已重置"
+
+    # 显示需要添加到服务器的Peer配置
+    echo
+    echo -e "${YELLOW}========================================${NC}"
+    echo -e "${YELLOW}  请将以下配置添加到服务器${NC}"
+    echo -e "${YELLOW}========================================${NC}"
+    echo
+    echo -e "  服务器配置文件位置: ${GREEN}/etc/wireguard/wg0.conf${NC}"
+    echo
+    echo -e "  请在服务器上执行: ${GREEN}sudo nano /etc/wireguard/wg0.conf${NC}"
+    echo
+    echo -e "  在文件末尾添加以下内容:"
+    echo
+    echo -e "${CYAN}# 树莓派 $(hostname)${NC}"
+    echo -e "${CYAN}[Peer]${NC}"
+    echo -e "${CYAN}PublicKey = ${public_key}${NC}"
+    echo -e "${CYAN}AllowedIPs = ${vpn_ip}/32${NC}"
+    echo
+    echo -e "  添加后，执行: ${GREEN}sudo systemctl restart wg-quick@wg0${NC}"
+    echo
 }
 
 # -----------------------------------------------
