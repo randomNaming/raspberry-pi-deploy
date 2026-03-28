@@ -842,7 +842,7 @@ manual_deploy() {
             "部署JAR文件"
             "部署配置文件"
             "部署系统服务"
-            "配置桩/服务器"
+            "配置桩/服务器 (可选)"
             "启动服务"
             "验证部署"
             "返回主菜单"
@@ -858,6 +858,9 @@ manual_deploy() {
             fi
             echo -e "  [$num] ${options[$i]}${status}"
         done
+
+        echo
+        echo -e "  ${YELLOW}[提示]${NC} 步骤4已包含桩/服务器配置，步骤6可跳过"
 
         echo
         local choice
@@ -890,8 +893,8 @@ manual_deploy() {
             failed+=("$((choice-1))")
         fi
 
-        # 检查是否全部完成（8个步骤，索引0-7）
-        if [ ${#completed[@]} -eq 8 ]; then
+        # 检查是否全部完成（7个必选步骤，步骤6可选）
+        if [ ${#completed[@]} -ge 7 ]; then
             echo
             print_success "所有部署步骤完成!"
             break
