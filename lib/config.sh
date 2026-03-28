@@ -221,12 +221,12 @@ EOF
 
     # 更新systemd服务文件中的环境变量
     if [ -f "/etc/systemd/system/${SERVICE_NAME}" ]; then
-        sudo sed -i "s|Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=.*\"|Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=$vpn_ip\"|" \
+        run_as_root sed -i "s|Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=.*\"|Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=$vpn_ip\"|" \
             "/etc/systemd/system/${SERVICE_NAME}" 2>/dev/null || true
-        sudo sed -i "s|Environment=\"SIMULATOR_INSTANCE_ID=.*\"|Environment=\"SIMULATOR_INSTANCE_ID=$sim_id\"|" \
+        run_as_root sed -i "s|Environment=\"SIMULATOR_INSTANCE_ID=.*\"|Environment=\"SIMULATOR_INSTANCE_ID=$sim_id\"|" \
             "/etc/systemd/system/${SERVICE_NAME}" 2>/dev/null || true
 
-        sudo systemctl daemon-reload
+        run_as_root systemctl daemon-reload
     fi
 
     print_success "配置已保存"

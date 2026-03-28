@@ -7,7 +7,7 @@
 # -----------------------------------------------
 # 全局常量
 # -----------------------------------------------
-readonly SCRIPT_VERSION="2.1.3"
+readonly SCRIPT_VERSION="2.1.4"
 readonly APP_NAME="hcp-simulator-lite"
 readonly APP_DIR="${HOME}/${APP_NAME}"
 readonly STATE_FILE="${HOME}/.hcp-deploy-state"
@@ -221,6 +221,15 @@ get_datetime() {
 # 检查是否为root用户
 is_root() {
     [ "$EUID" -eq 0 ]
+}
+
+# 执行命令（root用户不加sudo，普通用户加sudo）
+run_as_root() {
+    if is_root; then
+        "$@"
+    else
+        sudo "$@"
+    fi
 }
 
 # 确保目录存在

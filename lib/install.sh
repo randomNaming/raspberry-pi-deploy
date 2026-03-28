@@ -68,7 +68,7 @@ change_mirror() {
     # 备份原配置
     local backup_file="/etc/apt/sources.list.bak.$(get_timestamp)"
     print_info "备份原配置: $backup_file"
-    sudo cp /etc/apt/sources.list "$backup_file" 2>/dev/null || true
+    run_as_root cp /etc/apt/sources.list "$backup_file" 2>/dev/null || true
 
     # 生成新配置
     local new_sources=""
@@ -96,7 +96,7 @@ EOF
     fi
 
     # 写入新配置
-    echo "$new_sources" | sudo tee /etc/apt/sources.list > /dev/null
+    echo "$new_sources" | run_as_root tee /etc/apt/sources.list > /dev/null
     print_success "软件源已更换为: ${mirror_url}"
 
     return 0
@@ -107,7 +107,7 @@ EOF
 # -----------------------------------------------
 update_apt() {
     print_info "更新软件源..."
-    if sudo apt update 2>&1; then
+    if run_as_root apt update 2>&1; then
         print_success "软件源更新成功"
         return 0
     else
@@ -147,7 +147,7 @@ install_java() {
         fi
     fi
 
-    if ! safe_exec "sudo apt install -y openjdk-${JAVA_MIN_VERSION}-jdk" "Java安装失败"; then
+    if ! safe_exec "run_as_root apt install -y openjdk-${JAVA_MIN_VERSION}-jdk" "Java安装失败"; then
         return 1
     fi
 
@@ -337,10 +337,10 @@ PrivateTmp=true
 WantedBy=multi-user.target
 "
 
-    echo "$service_content" | sudo tee "/etc/systemd/system/${SERVICE_NAME}" > /dev/null
+    echo "$service_content" | run_as_root tee "/etc/systemd/system/${SERVICE_NAME}" > /dev/null
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable "${SERVICE_NAME}"
+    run_as_root systemctl daemon-reload
+    run_as_root systemctl enable "${SERVICE_NAME}"
 
     print_success "服务部署完成"
     return 0
@@ -352,9 +352,9 @@ WantedBy=multi-user.target
 start_service() {
     print_step "启动服务"
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable "${SERVICE_NAME}"
-    sudo systemctl restart "${SERVICE_NAME}"
+    run_as_root systemctl daemon-reload
+    run_as_root systemctl enable "${SERVICE_NAME}"
+    run_as_root systemctl restart "${SERVICE_NAME}"
     sleep 3
 
     if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
@@ -362,7 +362,7 @@ start_service() {
         return 0
     else
         print_error "服务启动失败"
-        print_info "查看日志: sudo journalctl -u ${SERVICE_NAME} -n 50"
+        print_info "查看日志: journalctl -u ${SERVICE_NAME} -n 50"
         return 1
     fi
 }
@@ -375,7 +375,7 @@ verify_deployment() {
 
     echo
     print_info "1. 检查服务状态..."
-    sudo systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
+    run_as_root systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
 
     echo
     print_info "2. 检查JAR文件..."
@@ -450,7 +450,7 @@ auto_deploy() {
                 update_apt || true
             fi
         fi
-        sudo apt install -y "openjdk-${JAVA_MIN_VERSION}-jdk"
+        run_as_root apt install -y "openjdk-${JAVA_MIN_VERSION}-jdk"
 
         if ! check_java &>/dev/null; then
             mark_failed "java_install" "Java安装失败"

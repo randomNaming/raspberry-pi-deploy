@@ -59,7 +59,7 @@ rollback_to() {
     print_step "回滚到快照: $snapshot_id"
 
     # 停止服务
-    sudo systemctl stop "${APP_NAME}" 2>/dev/null || true
+    run_as_root systemctl stop "${APP_NAME}" 2>/dev/null || true
 
     # 恢复配置
     if [ -d "$snapshot_dir/config" ]; then
@@ -74,12 +74,12 @@ rollback_to() {
 
     # 恢复systemd服务文件
     if [ -f "$snapshot_dir/${SERVICE_NAME}" ]; then
-        sudo cp "$snapshot_dir/${SERVICE_NAME}" "/etc/systemd/system/${SERVICE_NAME}"
-        sudo systemctl daemon-reload
+        run_as_root cp "$snapshot_dir/${SERVICE_NAME}" "/etc/systemd/system/${SERVICE_NAME}"
+        run_as_root systemctl daemon-reload
     fi
 
     # 重启服务
-    sudo systemctl start "${APP_NAME}" 2>/dev/null || true
+    run_as_root systemctl start "${APP_NAME}" 2>/dev/null || true
 
     print_success "回滚完成"
 }
@@ -142,7 +142,7 @@ scan_installation() {
 
     echo
     print_info "服务状态:"
-    sudo systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
+    run_as_root systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
 }
 
 # -----------------------------------------------
@@ -175,7 +175,7 @@ update_app_only() {
     # 停止服务
     if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
         print_info "停止服务..."
-        sudo systemctl stop "${SERVICE_NAME}"
+        run_as_root systemctl stop "${SERVICE_NAME}"
     fi
 
     # 部署新的JAR
@@ -183,7 +183,7 @@ update_app_only() {
 
     # 启动服务
     print_info "启动服务..."
-    sudo systemctl start "${SERVICE_NAME}"
+    run_as_root systemctl start "${SERVICE_NAME}"
 }
 
 # -----------------------------------------------
@@ -215,12 +215,12 @@ full_reinstall() {
     backup_current
 
     # 停止并禁用服务
-    sudo systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
-    sudo systemctl disable "${SERVICE_NAME}" 2>/dev/null || true
+    run_as_root systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
+    run_as_root systemctl disable "${SERVICE_NAME}" 2>/dev/null || true
 
     # 移除服务文件
-    sudo rm -f "/etc/systemd/system/${SERVICE_NAME}"
-    sudo systemctl daemon-reload
+    run_as_root rm -f "/etc/systemd/system/${SERVICE_NAME}"
+    run_as_root systemctl daemon-reload
 
     # 执行全新部署
     auto_deploy

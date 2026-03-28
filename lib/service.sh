@@ -9,7 +9,7 @@
 # -----------------------------------------------
 service_status() {
     echo
-    sudo systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
+    run_as_root systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
 }
 
 # -----------------------------------------------
@@ -21,14 +21,14 @@ service_start() {
         return
     fi
 
-    sudo systemctl start "${SERVICE_NAME}"
+    run_as_root systemctl start "${SERVICE_NAME}"
     sleep 2
 
     if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
         print_success "服务已启动"
     else
         print_error "服务启动失败"
-        print_info "查看日志: sudo journalctl -u ${SERVICE_NAME} -n 30"
+        print_info "查看日志: run_as_root journalctl -u ${SERVICE_NAME} -n 30"
     fi
 }
 
@@ -42,7 +42,7 @@ service_stop() {
     fi
 
     if confirm "停止服务?" "y"; then
-        sudo systemctl stop "${SERVICE_NAME}"
+        run_as_root systemctl stop "${SERVICE_NAME}"
         print_success "服务已停止"
     fi
 }
@@ -52,7 +52,7 @@ service_stop() {
 # -----------------------------------------------
 service_restart() {
     print_info "重启服务..."
-    sudo systemctl restart "${SERVICE_NAME}"
+    run_as_root systemctl restart "${SERVICE_NAME}"
     sleep 3
 
     if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
@@ -67,7 +67,7 @@ service_restart() {
 # -----------------------------------------------
 service_logs_live() {
     print_info "按Ctrl+C退出日志查看"
-    sudo journalctl -u "${SERVICE_NAME}" -f
+    run_as_root journalctl -u "${SERVICE_NAME}" -f
 }
 
 # -----------------------------------------------
@@ -75,14 +75,14 @@ service_logs_live() {
 # -----------------------------------------------
 service_logs_recent() {
     local lines=${1:-50}
-    sudo journalctl -u "${SERVICE_NAME}" -n "$lines"
+    run_as_root journalctl -u "${SERVICE_NAME}" -n "$lines"
 }
 
 # -----------------------------------------------
 # 启用开机自启
 # -----------------------------------------------
 service_enable() {
-    sudo systemctl enable "${SERVICE_NAME}"
+    run_as_root systemctl enable "${SERVICE_NAME}"
     print_success "服务已启用开机启动"
 }
 
@@ -90,7 +90,7 @@ service_enable() {
 # 禁用开机自启
 # -----------------------------------------------
 service_disable() {
-    sudo systemctl disable "${SERVICE_NAME}"
+    run_as_root systemctl disable "${SERVICE_NAME}"
     print_success "服务已禁用开机启动"
 }
 
