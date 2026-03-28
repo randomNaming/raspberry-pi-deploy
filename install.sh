@@ -293,22 +293,39 @@ install_local() {
 # 创建快捷命令
 # -----------------------------------------------
 create_alias() {
-    local alias_file="${HOME}/.bashrc"
+    # 方式1: 创建到 /usr/local/bin/ (全局可用)
+    if [ -d "/usr/local/bin" ]; then
+        cat > /tmp/hcp-deploy-wrapper << 'WRAPPER'
+#!/bin/bash
+exec bash "${HOME}/.hcp-deploy/deploy-interactive.sh" "$@"
+WRAPPER
+        chmod +x /tmp/hcp-deploy-wrapper
 
-    # 移除旧别名
-    if grep -q "hcp-deploy\|hcp-update" "$alias_file" 2>/dev/null; then
-        sed -i '/hcp-deploy\|hcp-update/d' "$alias_file" 2>/dev/null || true
+        if [ "$(id -u)" -eq 0 ]; then
+            mv /tmp/hcp-deploy-wrapper /usr/local/bin/hcp-deploy 2>/dev/null && \
+            print_info "全局命令已创建: hcp-deploy" && return 0
+        else
+            sudo mv /tmp/hcp-deploy-wrapper /usr/local/bin/hcp-deploy 2>/dev/null && \
+            print_info "全局命令已创建: hcp-deploy" && return 0
+        fi
     fi
 
-    # 添加新别名
-    cat >> "$alias_file" << 'EOF'
+    # 方式2: 创建到 ~/bin/ (用户目录)
+    mkdir -p "${HOME}/bin"
+    cat > "${HOME}/bin/hcp-deploy" << 'WRAPPER'
+#!/bin/bash
+exec bash "${HOME}/.hcp-deploy/deploy-interactive.sh" "$@"
+WRAPPER
+    chmod +x "${HOME}/bin/hcp-deploy"
 
-# HCP Simulator Lite
-alias hcp-deploy='bash ~/.hcp-deploy/deploy-interactive.sh'
-alias hcp-update='bash ~/.hcp-deploy/install.sh'
-EOF
+    # 检查 ~/bin 是否在 PATH 中
+    if [[ ":$PATH:" != *":${HOME}/bin:"* ]]; then
+        echo 'export PATH="${HOME}/bin:${PATH}"' >> "${HOME}/.bashrc"
+        print_info "已添加 ~/bin 到 PATH"
+    fi
 
-    print_info "快捷命令: hcp-deploy (运行) / hcp-update (更新)"
+    print_info "命令已创建: ${HOME}/bin/hcp-deploy"
+    print_info "请执行: source ~/.bashrc 或重新登录"
 }
 
 # -----------------------------------------------
