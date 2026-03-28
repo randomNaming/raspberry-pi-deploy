@@ -34,7 +34,7 @@
 **国内用户（Gitee，更快更稳定）：**
 
 ```bash
-bash <(curl -sL https://gitee.com/randomNaming/raspberry-pi-deploy/raw/main/install.sh)
+bash <(curl -sL https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/install.sh)
 ```
 
 **海外用户（GitHub）：**

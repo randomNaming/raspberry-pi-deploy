@@ -28,7 +28,7 @@ readonly NC='\033[0m'
 # 配置
 # -----------------------------------------------
 readonly GITHUB_USER="randomNaming"
-readonly GITEE_USER="randomNaming"
+readonly GITEE_USER="garrettxia"
 readonly REPO_NAME="raspberry-pi-deploy"
 readonly BRANCH="main"
 readonly INSTALL_DIR="${HOME}/.hcp-deploy"
