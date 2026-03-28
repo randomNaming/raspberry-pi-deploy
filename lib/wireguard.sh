@@ -8,8 +8,6 @@
 
 # WireGuard 默认参数
 readonly WG_DEFAULT_SERVER_IP="10.0.0.1"
-readonly WG_DEFAULT_SERVER_ENDPOINT="47.92.247.41:51820"
-readonly WG_DEFAULT_SERVER_PUBKEY=""
 readonly WG_DEFAULT_PORT="51820"
 readonly WG_CONF_DIR="/etc/wireguard"
 readonly WG_CONF_FILE="${WG_CONF_DIR}/wg0.conf"
@@ -208,11 +206,13 @@ configure_wireguard() {
     fi
 
     # 服务器地址
-    local default_endpoint="$WG_DEFAULT_SERVER_ENDPOINT"
-    if [ -f "$TEMP_DIR/wg-server-endpoint" ]; then
-        default_endpoint=$(cat "$TEMP_DIR/wg-server-endpoint")
-    fi
-    server_endpoint=$(safe_read "服务器地址 (IP:端口)" "$default_endpoint")
+    local server_endpoint=""
+    while [ -z "$server_endpoint" ]; do
+        server_endpoint=$(safe_read "服务器地址 (IP:端口)" "")
+        if [ -z "$server_endpoint" ]; then
+            print_warn "服务器地址不能为空"
+        fi
+    done
 
     # 创建配置目录
     ensure_dir "$WG_CONF_DIR"
@@ -248,7 +248,7 @@ PersistentKeepalive = 25
 configure_wireguard_quick() {
     local vpn_ip="$1"
     local server_pubkey="$2"
-    local server_endpoint="${3:-$WG_DEFAULT_SERVER_ENDPOINT}"
+    local server_endpoint="${3:-}"
 
     ensure_dir "$WG_CONF_DIR"
 
@@ -258,6 +258,11 @@ configure_wireguard_quick() {
         private_key=$(run_as_root cat "${WG_CONF_DIR}/pi_private.key")
     else
         print_error "未找到私钥，请先生成密钥对"
+        return 1
+    fi
+
+    if [ -z "$server_endpoint" ]; then
+        print_error "服务器地址不能为空"
         return 1
     fi
 
