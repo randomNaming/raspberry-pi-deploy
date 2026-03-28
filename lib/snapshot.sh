@@ -275,7 +275,7 @@ reset_wireguard_config() {
     run_as_root chmod 644 "${WG_CONF_DIR}/pi_public.key"
 
     # 交互式配置
-    local vpn_ip server_pubkey server_endpoint
+    local vpn_ip="" server_pubkey="" server_endpoint=""
 
     echo
     echo -e "${CYAN}--- WireGuard 客户端配置 ---${NC}"
