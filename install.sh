@@ -309,23 +309,24 @@ exec bash \"${INSTALL_DIR}/deploy-interactive.sh\" \"\$@\""
 
     # 创建 hcp-update 命令（自包含，不依赖本地文件）
     local update_cmd='#!/bin/bash
-INSTALL_DIR="${HOME}/.hcp-deploy"
 GITEE_URL="https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/install.sh?t=$(date +%s)"
 GITHUB_URL="https://raw.githubusercontent.com/randomNaming/raspberry-pi-deploy/main/install.sh?t=$(date +%s)"
 
-# 下载并执行引导脚本
-if curl -sL --connect-timeout 15 --max-time 120 "$GITEE_URL" -o /tmp/hcp-update-$$.sh 2>/dev/null && [ -s /tmp/hcp-update-$$.sh ]; then
-    bash /tmp/hcp-update-$$.sh "$@"
-    rm -f /tmp/hcp-update-$$.sh
-elif curl -sL --connect-timeout 15 --max-time 120 "$GITHUB_URL" -o /tmp/hcp-update-$$.sh 2>/dev/null && [ -s /tmp/hcp-update-$$.sh ]; then
-    bash /tmp/hcp-update-$$.sh "$@"
-    rm -f /tmp/hcp-update-$$.sh
-else
-    echo "[错误] 无法下载更新脚本，请检查网络连接"
-    echo "[提示] Gitee: bash <(curl -sL $GITEE_URL)"
-    echo "[提示] GitHub: bash <(curl -sL $GITHUB_URL)"
-    exit 1
-fi'
+# 尝试 Gitee
+if curl -sL --connect-timeout 10 --max-time 5 "$GITEE_URL" 2>/dev/null | head -1 | grep -q "^#!/"; then
+    bash <(curl -sL "$GITEE_URL") "$@"
+    exit 0
+fi
+
+# Gitee 失败，尝试 GitHub
+if curl -sL --connect-timeout 10 --max-time 5 "$GITHUB_URL" 2>/dev/null | head -1 | grep -q "^#!/"; then
+    bash <(curl -sL "$GITHUB_URL") "$@"
+    exit 0
+fi
+
+echo "[错误] 无法下载更新脚本，请检查网络连接"
+echo "手动执行: bash <(curl -sL $GITEE_URL)"
+exit 1'
 
     # 优先创建到 /usr/local/bin/
     if [ -d "/usr/local/bin" ]; then
