@@ -55,6 +55,8 @@ hcp-deploy
 hcp-update
 ```
 
+**自动更新：** 每次运行 `hcp-deploy` 时自动检测新版本，发现更新会提示安装。
+
 ### 手动安装
 
 ```bash
