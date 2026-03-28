@@ -5,10 +5,10 @@
 # =============================================================================
 
 # -----------------------------------------------
-# 配置服务器连接参数
+# 配置云快充平台连接参数
 # -----------------------------------------------
 configure_server() {
-    print_step "配置服务器"
+    print_step "配置云快充平台 (YKC)"
 
     local host port protocol software
 
@@ -27,11 +27,12 @@ configure_server() {
     software=${software:-V1.6.0}
 
     echo
+    echo -e "${GREEN}[说明]${NC} 云快充平台是充电桩连接的后台服务器"
     echo -e "${YELLOW}当前值在方括号中，直接回车使用默认值${NC}"
     echo
 
-    host=$(safe_read "服务器地址" "$host")
-    port=$(safe_read "服务器端口" "$port")
+    host=$(safe_read "云快充平台地址" "$host")
+    port=$(safe_read "云快充平台端口" "$port")
     protocol=$(safe_read "协议版本(V150/V160/V170)" "$protocol")
     software=$(safe_read "软件版本" "$software")
 

@@ -412,12 +412,13 @@ create_default_config() {
 
     if [[ -t 0 ]]; then
         echo
-        print_info "请输入云快充平台连接参数"
+        echo -e "${CYAN}--- 云快充平台连接配置 ---${NC}"
+        echo -e "${GREEN}[说明]${NC} 云快充平台是充电桩连接的后台服务器"
         echo
 
         # 服务器配置
-        ykc_host=$(safe_read "服务器地址" "$ykc_host")
-        ykc_port=$(safe_read "服务器端口" "$ykc_port")
+        ykc_host=$(safe_read "云快充平台地址" "$ykc_host")
+        ykc_port=$(safe_read "云快充平台端口" "$ykc_port")
         protocol_version=$(safe_read "协议版本" "$protocol_version")
         software_version=$(safe_read "软件版本" "$software_version")
 
