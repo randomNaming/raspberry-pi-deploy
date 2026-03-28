@@ -153,6 +153,9 @@ download_by_files() {
         return 1
     fi
 
+    # 下载引导脚本（用于更新）
+    download_file "${base_url}/install.sh?t=${CACHE_BUST}" "$TEMP_DIR/install.sh" 2>/dev/null || true
+
     # 下载 lib 目录下的所有脚本
     local lib_files=(
         "common.sh"
@@ -283,6 +286,7 @@ install_local() {
     # 设置执行权限
     chmod +x "$INSTALL_DIR/deploy-interactive.sh"
     chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
+    [ -f "$INSTALL_DIR/install.sh" ] && chmod +x "$INSTALL_DIR/install.sh" || true
 
     local version
     version=$(get_local_version)
@@ -302,10 +306,25 @@ create_alias() {
     local deploy_cmd="#!/bin/bash
 exec bash \"${INSTALL_DIR}/deploy-interactive.sh\" \"\$@\""
 
-    # 创建 hcp-update 命令
-    local update_cmd="#!/bin/bash
-rm -rf \"${INSTALL_DIR}\"
-bash <(curl -sL https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/install.sh) \"\$@\""
+    # 创建 hcp-update 命令（自包含，不依赖本地文件）
+    local update_cmd='#!/bin/bash
+INSTALL_DIR="${HOME}/.hcp-deploy"
+GITEE_URL="https://gitee.com/garrettxia/raspberry-pi-deploy/raw/main/install.sh?t=$(date +%s)"
+GITHUB_URL="https://raw.githubusercontent.com/randomNaming/raspberry-pi-deploy/main/install.sh?t=$(date +%s)"
+
+# 下载并执行引导脚本
+if curl -sL --connect-timeout 15 --max-time 120 "$GITEE_URL" -o /tmp/hcp-update-$$.sh 2>/dev/null && [ -s /tmp/hcp-update-$$.sh ]; then
+    bash /tmp/hcp-update-$$.sh "$@"
+    rm -f /tmp/hcp-update-$$.sh
+elif curl -sL --connect-timeout 15 --max-time 120 "$GITHUB_URL" -o /tmp/hcp-update-$$.sh 2>/dev/null && [ -s /tmp/hcp-update-$$.sh ]; then
+    bash /tmp/hcp-update-$$.sh "$@"
+    rm -f /tmp/hcp-update-$$.sh
+else
+    echo "[错误] 无法下载更新脚本，请检查网络连接"
+    echo "[提示] Gitee: bash <(curl -sL $GITEE_URL)"
+    echo "[提示] GitHub: bash <(curl -sL $GITHUB_URL)"
+    exit 1
+fi'
 
     # 优先创建到 /usr/local/bin/
     if [ -d "/usr/local/bin" ]; then
