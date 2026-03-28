@@ -31,6 +31,14 @@
 
 ### 一行命令安装（推荐）
 
+**国内用户（Gitee，更快更稳定）：**
+
+```bash
+bash <(curl -sL https://gitee.com/randomNaming/raspberry-pi-deploy/raw/main/install.sh)
+```
+
+**海外用户（GitHub）：**
+
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/randomNaming/raspberry-pi-deploy/main/install.sh)
 ```
@@ -39,6 +47,12 @@ bash <(curl -sL https://raw.githubusercontent.com/randomNaming/raspberry-pi-depl
 
 ```bash
 hcp-deploy
+```
+
+**一键更新：**
+
+```bash
+hcp-update
 ```
 
 ### 手动安装
