@@ -176,6 +176,66 @@ create_dirs() {
 }
 
 # -----------------------------------------------
+# 获取最新发行版版本号
+# -----------------------------------------------
+get_latest_release() {
+    local api_url="https://gitee.com/api/v5/repos/garrettxia/raspberry-pi-deploy/releases/latest"
+    local version
+
+    version=$(curl -sL --connect-timeout 10 --max-time 15 "$api_url" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+
+    if [ -n "$version" ]; then
+        echo "$version"
+        return 0
+    fi
+
+    # 备用方式：从GitHub获取
+    api_url="https://api.github.com/repos/randomNaming/raspberry-pi-deploy/releases/latest"
+    version=$(curl -sL --connect-timeout 10 --max-time 15 "$api_url" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+
+    echo "$version"
+}
+
+# -----------------------------------------------
+# 从发行版下载JAR
+# -----------------------------------------------
+download_jar_from_release() {
+    local version="$1"
+    local jar_url=""
+    local temp_jar="/tmp/${JAR_FILE}.download"
+
+    print_info "正在下载 ${JAR_FILE} (版本: ${version})..."
+
+    # Gitee 下载链接
+    jar_url="https://gitee.com/garrettxia/raspberry-pi-deploy/releases/download/${version}/${JAR_FILE}"
+
+    if curl -sL --connect-timeout 15 --max-time 300 -o "$temp_jar" "$jar_url" 2>/dev/null; then
+        if [ -s "$temp_jar" ]; then
+            # 验证是有效的JAR文件（检查文件头）
+            if file "$temp_jar" | grep -qi "zip\|jar\|java"; then
+                echo "$temp_jar"
+                return 0
+            fi
+        fi
+    fi
+
+    # 备用：从GitHub下载
+    jar_url="https://github.com/randomNaming/raspberry-pi-deploy/releases/download/${version}/${JAR_FILE}"
+
+    if curl -sL --connect-timeout 15 --max-time 300 -o "$temp_jar" "$jar_url" 2>/dev/null; then
+        if [ -s "$temp_jar" ]; then
+            if file "$temp_jar" | grep -qi "zip\|jar\|java"; then
+                echo "$temp_jar"
+                return 0
+            fi
+        fi
+    fi
+
+    rm -f "$temp_jar"
+    return 1
+}
+
+# -----------------------------------------------
 # 部署JAR文件
 # -----------------------------------------------
 deploy_jar() {
@@ -191,7 +251,34 @@ deploy_jar() {
         fi
     done
 
-    # 如果未找到，提示用户输入路径
+    # 如果未找到本地文件，尝试从发行版下载
+    if [ -z "$jar_path" ]; then
+        print_info "本地未找到 ${JAR_FILE}，尝试从发行版下载..."
+
+        # 获取最新版本号
+        local latest_version
+        latest_version=$(get_latest_release)
+
+        if [ -z "$latest_version" ]; then
+            print_error "无法获取最新版本号"
+        else
+            print_info "最新发行版: ${latest_version}"
+
+            if confirm "是否下载 ${JAR_FILE}?" "y"; then
+                local downloaded_jar
+                downloaded_jar=$(download_jar_from_release "$latest_version")
+
+                if [ -n "$downloaded_jar" ] && [ -f "$downloaded_jar" ]; then
+                    jar_path="$downloaded_jar"
+                    print_success "下载完成"
+                else
+                    print_error "下载失败"
+                fi
+            fi
+        fi
+    fi
+
+    # 如果仍未找到，提示用户输入路径
     if [ -z "$jar_path" ]; then
         print_error "未找到JAR文件: ${JAR_FILE}"
         print_info "请将JAR文件放置到以下位置之一:"
