@@ -256,9 +256,6 @@ reset_wireguard_config() {
         print_info "配置已备份: $backup_file"
     fi
 
-    # 删除配置文件
-    run_as_root rm -f "$WG_CONF_FILE" 2>/dev/null || true
-
     # 生成新的密钥对
     print_info "生成新的密钥对..."
     local private_key public_key
@@ -277,13 +274,53 @@ reset_wireguard_config() {
     run_as_root chmod 600 "${WG_CONF_DIR}/pi_private.key"
     run_as_root chmod 644 "${WG_CONF_DIR}/pi_public.key"
 
-    # 获取VPN IP
-    local vpn_ip="10.0.0.2"
-    if [[ -t 0 ]]; then
-        vpn_ip=$(safe_read "本机 VPN IP (如 10.0.0.2)" "10.0.0.2")
+    # 交互式配置
+    local vpn_ip server_pubkey server_endpoint
+
+    echo
+    echo -e "${CYAN}--- WireGuard 客户端配置 ---${NC}"
+    echo
+
+    # VPN IP
+    vpn_ip=$(safe_read "本机 VPN IP (如 10.0.0.2)" "10.0.0.2")
+
+    # 服务器公钥
+    echo
+    print_info "请输入服务器管理员提供的公钥"
+    server_pubkey=$(safe_read "服务器公钥" "")
+
+    if [ -z "$server_pubkey" ]; then
+        print_error "服务器公钥不能为空"
+        return 1
     fi
 
-    print_success "WireGuard 配置已重置"
+    # 服务器地址
+    while [ -z "$server_endpoint" ]; do
+        server_endpoint=$(safe_read "服务器地址 (IP:端口, 如 1.2.3.4:51820)" "")
+        if [ -z "$server_endpoint" ]; then
+            print_warn "服务器地址不能为空"
+        elif ! [[ "$server_endpoint" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]]; then
+            print_warn "格式错误，正确格式: IP:端口 (如 1.2.3.4:51820)"
+            server_endpoint=""
+        fi
+    done
+
+    # 写入本地配置文件
+    local conf_content="[Interface]
+PrivateKey = ${private_key}
+Address = ${vpn_ip}/24
+
+[Peer]
+PublicKey = ${server_pubkey}
+Endpoint = ${server_endpoint}
+AllowedIPs = 10.0.0.0/24
+PersistentKeepalive = 25
+"
+
+    echo "$conf_content" | run_as_root tee "$WG_CONF_FILE" > /dev/null
+    run_as_root chmod 600 "$WG_CONF_FILE"
+
+    print_success "WireGuard 配置完成"
 
     # 显示需要添加到服务器的Peer配置
     echo
