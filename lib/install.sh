@@ -622,7 +622,7 @@ Environment=\"NACOS_PORT=8848\"
 Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=10.0.0.2\"
 Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_PORT=18080\"
 Environment=\"SIMULATOR_INSTANCE_ID=pi-01\"
-ExecStart=/usr/bin/java -Xms256m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8 -Dspring.profiles.active=prod -jar ${APP_DIR}/${JAR_FILE} --spring.config.location=file:${APP_DIR}/config/application.yml
+ExecStart=/usr/bin/java -Xms256m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8 -Dspring.profiles.active=prod -jar ${APP_DIR}/${JAR_FILE}
 ExecStop=/bin/kill -15 \$MAINPID
 Restart=always
 RestartSec=10
@@ -687,7 +687,7 @@ verify_deployment() {
     echo
     print_info "3. 检查配置文件..."
     local config_found=false
-    for f in application-prod.yml application.yml bootstrap.yml; do
+    for f in bootstrap.yml application-prod.yml application.yml; do
         if [ -f "$APP_DIR/config/$f" ]; then
             print_success "配置文件存在: $f"
             config_found=true
