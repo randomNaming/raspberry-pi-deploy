@@ -204,30 +204,55 @@ download_jar_from_release() {
     local jar_url=""
     local temp_jar="/tmp/${JAR_FILE}.download"
 
+    # 清理旧文件
+    rm -f "$temp_jar"
+
     print_info "正在下载 ${JAR_FILE} (版本: ${version})..."
 
     # Gitee 下载链接
     jar_url="https://gitee.com/garrettxia/raspberry-pi-deploy/releases/download/${version}/${JAR_FILE}"
+    print_info "下载地址: ${jar_url}"
 
-    if curl -sL --connect-timeout 15 --max-time 300 -o "$temp_jar" "$jar_url" 2>/dev/null; then
-        if [ -s "$temp_jar" ]; then
-            # 验证是有效的JAR文件（检查文件头）
-            if file "$temp_jar" | grep -qi "zip\|jar\|java"; then
-                echo "$temp_jar"
-                return 0
-            fi
+    # 下载文件（-L 跟随重定向）
+    local http_code
+    http_code=$(curl -sL --connect-timeout 15 --max-time 300 -w "%{http_code}" -o "$temp_jar" "$jar_url" 2>/dev/null)
+    print_info "HTTP状态码: ${http_code}"
+
+    if [ -f "$temp_jar" ] && [ -s "$temp_jar" ]; then
+        local file_size
+        file_size=$(du -h "$temp_jar" | cut -f1)
+        print_info "文件大小: ${file_size}"
+
+        # 检查是否为HTML错误页面
+        if head -c 100 "$temp_jar" | grep -qi "<!DOCTYPE\|<html\|<head"; then
+            print_warn "下载的是HTML页面，非JAR文件"
+            rm -f "$temp_jar"
+        else
+            echo "$temp_jar"
+            return 0
         fi
     fi
 
     # 备用：从GitHub下载
+    print_info "尝试从GitHub下载..."
     jar_url="https://github.com/randomNaming/raspberry-pi-deploy/releases/download/${version}/${JAR_FILE}"
+    print_info "下载地址: ${jar_url}"
 
-    if curl -sL --connect-timeout 15 --max-time 300 -o "$temp_jar" "$jar_url" 2>/dev/null; then
-        if [ -s "$temp_jar" ]; then
-            if file "$temp_jar" | grep -qi "zip\|jar\|java"; then
-                echo "$temp_jar"
-                return 0
-            fi
+    rm -f "$temp_jar"
+    http_code=$(curl -sL --connect-timeout 15 --max-time 300 -w "%{http_code}" -o "$temp_jar" "$jar_url" 2>/dev/null)
+    print_info "HTTP状态码: ${http_code}"
+
+    if [ -f "$temp_jar" ] && [ -s "$temp_jar" ]; then
+        local file_size
+        file_size=$(du -h "$temp_jar" | cut -f1)
+        print_info "文件大小: ${file_size}"
+
+        if head -c 100 "$temp_jar" | grep -qi "<!DOCTYPE\|<html\|<head"; then
+            print_warn "下载的是HTML页面，非JAR文件"
+            rm -f "$temp_jar"
+        else
+            echo "$temp_jar"
+            return 0
         fi
     fi
 
