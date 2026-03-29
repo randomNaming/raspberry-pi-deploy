@@ -409,7 +409,6 @@ image_takeover() {
 
     echo
     local choice
-    local choice
     safe_read_char "选择 [1-${#options[@]}]" choice
     echo
 

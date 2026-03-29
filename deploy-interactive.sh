@@ -13,7 +13,9 @@
 #     common.sh            - 通用工具函数
 #     state.sh             - 状态管理
 #     env-check.sh         - 环境检测
-#     install.sh           - 安装部署
+#     mirror.sh            - 镜像源管理
+#     download.sh          - JAR 下载与部署
+#     install.sh           - 安装部署主流程
 #     wireguard.sh         - WireGuard VPN
 #     config.sh            - 配置管理
 #     service.sh           - 服务管理
@@ -58,7 +60,9 @@ load_modules() {
         "common.sh"        # 基础工具函数（最先加载）
         "state.sh"         # 状态管理
         "env-check.sh"     # 环境检测
-        "install.sh"       # 安装部署
+        "mirror.sh"        # 镜像源管理（install.sh 依赖）
+        "download.sh"      # JAR 下载与部署（install.sh 依赖）
+        "install.sh"       # 安装部署主流程
         "wireguard.sh"     # WireGuard VPN
         "config.sh"        # 配置管理
         "service.sh"       # 服务管理

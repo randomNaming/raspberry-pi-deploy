@@ -107,7 +107,9 @@ raspberry-pi-deploy/
     ├── common.sh            # 通用工具函数（日志、颜色、用户交互）
     ├── state.sh             # 状态管理（部署进度记录）
     ├── env-check.sh         # 环境检测（系统、Java、网络、磁盘）
-    ├── install.sh           # 安装部署（Java、目录、JAR、配置、服务）
+    ├── mirror.sh            # 镜像源管理（阿里云、清华、USTC）
+    ├── download.sh          # JAR 下载与部署（本地搜索、Gitee/GitHub releases）
+    ├── install.sh           # 安装部署主流程（Java、目录、配置、服务）
     ├── config.sh            # 配置管理（服务器、桩、VPN 配置）
     ├── service.sh           # 服务管理（systemd 服务操作）
     ├── snapshot.sh          # 快照与回滚（备份、恢复、接管）

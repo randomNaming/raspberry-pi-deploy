@@ -161,6 +161,8 @@ download_by_files() {
         "common.sh"
         "state.sh"
         "env-check.sh"
+        "mirror.sh"
+        "download.sh"
         "install.sh"
         "wireguard.sh"
         "config.sh"

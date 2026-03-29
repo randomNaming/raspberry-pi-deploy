@@ -1,124 +1,13 @@
 #!/bin/bash
 # =============================================================================
-# 安装部署模块
-# 处理Java安装、目录创建、JAR部署、配置部署、服务部署
+# 安装部署模块（主流程）
+# 处理Java安装、目录创建、配置部署、服务部署、一键/手动部署流程
+# 注意：镜像源管理在 mirror.sh，JAR下载在 download.sh
 # =============================================================================
 
 # -----------------------------------------------
-# 更换软件源（国内镜像加速）
-# -----------------------------------------------
-change_mirror() {
-    print_step "更换软件源"
-
-    # 检测是否需要更换
-    if [ -f /etc/apt/sources.list ]; then
-        if grep -q "mirrors.aliyun.com\|mirrors.tuna.tsinghua.edu.cn\|mirrors.ustc.edu.cn" /etc/apt/sources.list 2>/dev/null; then
-            print_info "已使用国内镜像源，无需更换"
-            return 0
-        fi
-    fi
-
-    # 检测系统版本
-    local os_id="" os_codename=""
-    if [ -f /etc/os-release ]; then
-        # shellcheck source=/dev/null
-        . /etc/os-release
-        os_id="${ID:-}"
-        os_codename="${VERSION_CODENAME:-}"
-    fi
-
-    # 获取代号（兼容不同方式）
-    if [ -z "$os_codename" ] && [ -f /etc/lsb-release ]; then
-        os_codename=$(grep "DISTRIB_CODENAME" /etc/lsb-release | cut -d'=' -f2)
-    fi
-    if [ -z "$os_codename" ]; then
-        os_codename=$(lsb_release -cs 2>/dev/null || echo "")
-    fi
-
-    if [ -z "$os_codename" ]; then
-        print_warn "无法检测系统代号，跳过换源"
-        return 0
-    fi
-
-    print_info "检测到系统: ${os_id} ${os_codename}"
-
-    # 选择镜像源
-    local mirror_url=""
-    echo
-    echo "  选择镜像源:"
-    echo "  [1] 阿里云 (推荐)"
-    echo "  [2] 清华大学"
-    echo "  [3] 中科大"
-    echo "  [4] 跳过换源"
-    echo
-
-    local choice
-    safe_read_char "选择 [1-4]" choice "1"
-
-    case $choice in
-        1) mirror_url="https://mirrors.aliyun.com" ;;
-        2) mirror_url="https://mirrors.tuna.tsinghua.edu.cn" ;;
-        3) mirror_url="https://mirrors.ustc.edu.cn" ;;
-        4|*) 
-            print_info "跳过换源"
-            return 0
-            ;;
-    esac
-
-    # 备份原配置
-    local backup_file="/etc/apt/sources.list.bak.$(get_timestamp)"
-    print_info "备份原配置: $backup_file"
-    run_as_root cp /etc/apt/sources.list "$backup_file" 2>/dev/null || true
-
-    # 生成新配置
-    local new_sources=""
-
-    if [ "$os_id" = "ubuntu" ]; then
-        # Ubuntu源
-        new_sources=$(cat << EOF
-deb ${mirror_url}/ubuntu/ ${os_codename} main restricted universe multiverse
-deb ${mirror_url}/ubuntu/ ${os_codename}-updates main restricted universe multiverse
-deb ${mirror_url}/ubuntu/ ${os_codename}-backports main restricted universe multiverse
-deb ${mirror_url}/ubuntu/ ${os_codename}-security main restricted universe multiverse
-EOF
-)
-    elif [ "$os_id" = "debian" ] || [ "$os_id" = "raspbian" ]; then
-        # Debian源
-        new_sources=$(cat << EOF
-deb ${mirror_url}/debian/ ${os_codename} main contrib non-free non-free-firmware
-deb ${mirror_url}/debian/ ${os_codename}-updates main contrib non-free non-free-firmware
-deb ${mirror_url}/debian-security/ ${os_codename}-security main contrib non-free non-free-firmware
-EOF
-)
-    else
-        print_warn "不支持的系统: ${os_id}，跳过换源"
-        return 0
-    fi
-
-    # 写入新配置
-    echo "$new_sources" | run_as_root tee /etc/apt/sources.list > /dev/null
-    print_success "软件源已更换为: ${mirror_url}"
-
-    return 0
-}
-
-# -----------------------------------------------
-# 更新软件源
-# -----------------------------------------------
-update_apt() {
-    print_info "更新软件源..."
-    if run_as_root apt update 2>&1; then
-        print_success "软件源更新成功"
-        return 0
-    else
-        print_error "软件源更新失败"
-        print_info "建议执行换源操作或检查网络连接"
-        return 1
-    fi
-}
-
-# -----------------------------------------------
-# 安装Java
+# 安装 Java 运行环境
+# 优先尝试更新软件源，失败则提示更换国内镜像
 # -----------------------------------------------
 install_java() {
     print_step "安装Java"
@@ -161,7 +50,7 @@ install_java() {
 }
 
 # -----------------------------------------------
-# 创建应用目录结构
+# 创建应用目录结构（data、logs、config）
 # -----------------------------------------------
 create_dirs() {
     print_step "创建目录"
@@ -176,173 +65,9 @@ create_dirs() {
 }
 
 # -----------------------------------------------
-# 获取最新发行版版本号
-# -----------------------------------------------
-get_latest_release() {
-    local api_url="https://gitee.com/api/v5/repos/garrettxia/raspberry-pi-deploy/releases/latest"
-    local version
-
-    version=$(curl -sL --connect-timeout 10 --max-time 15 "$api_url" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
-
-    if [ -n "$version" ]; then
-        echo "$version"
-        return 0
-    fi
-
-    # 备用方式：从GitHub获取
-    api_url="https://api.github.com/repos/randomNaming/raspberry-pi-deploy/releases/latest"
-    version=$(curl -sL --connect-timeout 10 --max-time 15 "$api_url" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
-
-    echo "$version"
-}
-
-# -----------------------------------------------
-# 从发行版下载JAR
-# -----------------------------------------------
-DOWNLOADED_JAR_PATH=""
-
-download_jar_from_release() {
-    local version="$1"
-    local jar_url=""
-    local temp_jar="/tmp/${JAR_FILE}.download"
-    DOWNLOADED_JAR_PATH=""
-
-    # 清理旧文件
-    rm -f "$temp_jar"
-
-    print_info "正在下载 ${JAR_FILE} (版本: ${version})..."
-
-    # Gitee 下载链接
-    jar_url="https://gitee.com/garrettxia/raspberry-pi-deploy/releases/download/${version}/${JAR_FILE}"
-    print_info "下载地址: ${jar_url}"
-
-    # 下载文件（-L 跟随重定向）
-    local http_code
-    http_code=$(curl -sL --connect-timeout 15 --max-time 300 -w "%{http_code}" -o "$temp_jar" "$jar_url" 2>/dev/null)
-    print_info "HTTP状态码: ${http_code}"
-
-    if [ -f "$temp_jar" ] && [ -s "$temp_jar" ]; then
-        local file_size
-        file_size=$(du -h "$temp_jar" | cut -f1)
-        print_info "文件大小: ${file_size}"
-
-        # 检查是否为HTML错误页面
-        if head -c 100 "$temp_jar" 2>/dev/null | grep -qi "<!DOCTYPE\|<html\|<head"; then
-            print_warn "下载的是HTML页面，非JAR文件"
-            rm -f "$temp_jar"
-        else
-            print_success "下载成功: ${temp_jar}"
-            DOWNLOADED_JAR_PATH="$temp_jar"
-            return 0
-        fi
-    else
-        print_warn "文件为空或不存在"
-    fi
-
-    # 备用：从GitHub下载
-    print_info "尝试从GitHub下载..."
-    jar_url="https://github.com/randomNaming/raspberry-pi-deploy/releases/download/${version}/${JAR_FILE}"
-    print_info "下载地址: ${jar_url}"
-
-    rm -f "$temp_jar"
-    http_code=$(curl -sL --connect-timeout 15 --max-time 300 -w "%{http_code}" -o "$temp_jar" "$jar_url" 2>/dev/null)
-    print_info "HTTP状态码: ${http_code}"
-
-    if [ -f "$temp_jar" ] && [ -s "$temp_jar" ]; then
-        local file_size
-        file_size=$(du -h "$temp_jar" | cut -f1)
-        print_info "文件大小: ${file_size}"
-
-        if head -c 100 "$temp_jar" 2>/dev/null | grep -qi "<!DOCTYPE\|<html\|<head"; then
-            print_warn "下载的是HTML页面，非JAR文件"
-            rm -f "$temp_jar"
-        else
-            print_success "下载成功: ${temp_jar}"
-            DOWNLOADED_JAR_PATH="$temp_jar"
-            return 0
-        fi
-    else
-        print_warn "文件为空或不存在"
-    fi
-
-    rm -f "$temp_jar"
-    return 1
-}
-
-# -----------------------------------------------
-# 部署JAR文件
-# -----------------------------------------------
-deploy_jar() {
-    print_step "部署JAR文件"
-
-    local jar_path=""
-
-    # 搜索JAR文件位置
-    for dir in "$SCRIPT_DIR" "$HOME" "." "/tmp"; do
-        if [ -f "$dir/${JAR_FILE}" ]; then
-            jar_path="$dir/${JAR_FILE}"
-            break
-        fi
-    done
-
-    # 如果未找到本地文件，尝试从发行版下载
-    if [ -z "$jar_path" ]; then
-        print_info "本地未找到 ${JAR_FILE}，尝试从发行版下载..."
-
-        # 获取最新版本号
-        local latest_version
-        latest_version=$(get_latest_release)
-
-        if [ -z "$latest_version" ]; then
-            print_error "无法获取最新版本号"
-        else
-            print_info "最新发行版: ${latest_version}"
-
-            if confirm "是否下载 ${JAR_FILE}?" "y"; then
-                if download_jar_from_release "$latest_version"; then
-                    jar_path="$DOWNLOADED_JAR_PATH"
-                    print_success "下载完成"
-                else
-                    print_error "下载失败"
-                fi
-            fi
-        fi
-    fi
-
-    # 如果仍未找到，提示用户输入路径
-    if [ -z "$jar_path" ]; then
-        print_error "未找到JAR文件: ${JAR_FILE}"
-        print_info "请将JAR文件放置到以下位置之一:"
-        print_info "  - 脚本目录: $SCRIPT_DIR"
-        print_info "  - home目录: $HOME"
-        print_info "  - 当前目录: $(pwd)"
-
-        jar_path=$(safe_read "输入JAR文件路径" "")
-        if [ -z "$jar_path" ]; then
-            print_error "未提供JAR文件路径"
-            return 1
-        fi
-    fi
-
-    # 验证文件存在
-    if [ ! -f "$jar_path" ]; then
-        print_error "文件不存在: $jar_path"
-        return 1
-    fi
-
-    print_info "源文件: $jar_path"
-    print_info "目标: $APP_DIR/${JAR_FILE}"
-
-    cp "$jar_path" "$APP_DIR/${JAR_FILE}"
-    chmod +x "$APP_DIR/${JAR_FILE}"
-    chown -R "$(whoami):$(id -gn)" "$APP_DIR/${JAR_FILE}"
-
-    print_success "JAR部署完成"
-    return 0
-}
-
-# -----------------------------------------------
 # 部署配置文件
+# 优先查找 application-prod.yml，其次 application.yml
+# 未找到时运行交互式配置向导
 # -----------------------------------------------
 deploy_config() {
     print_step "部署配置文件"
@@ -396,7 +121,8 @@ deploy_config() {
 }
 
 # -----------------------------------------------
-# 创建配置文件（交互式）
+# 创建默认配置文件（交互式）
+# 引导用户输入平台地址、桩号等信息，生成 YAML 配置
 # -----------------------------------------------
 create_default_config() {
     print_header "创建配置文件"
@@ -602,7 +328,8 @@ EOF
 }
 
 # -----------------------------------------------
-# 部署systemd服务
+# 部署 systemd 服务单元文件
+# 生成服务文件并注册到系统
 # -----------------------------------------------
 deploy_service() {
     print_step "部署Systemd服务"
@@ -647,7 +374,7 @@ WantedBy=multi-user.target
 }
 
 # -----------------------------------------------
-# 启动服务
+# 启动应用服务并验证状态
 # -----------------------------------------------
 start_service() {
     print_step "启动服务"
@@ -668,7 +395,7 @@ start_service() {
 }
 
 # -----------------------------------------------
-# 验证部署结果
+# 验证部署结果（检查服务、JAR、配置、健康状态）
 # -----------------------------------------------
 verify_deployment() {
     print_step "验证部署"
@@ -710,7 +437,8 @@ verify_deployment() {
 }
 
 # -----------------------------------------------
-# 一键自动部署
+# 一键自动部署（完整自动化流程）
+# 包含环境检测、快照、VPN、Java、目录、JAR、配置、服务
 # -----------------------------------------------
 auto_deploy() {
     local total_steps=9
@@ -868,7 +596,8 @@ auto_deploy() {
 }
 
 # -----------------------------------------------
-# 手动部署模式
+# 手动部署模式（逐步选择执行）
+# 用户可自由选择执行顺序和步骤
 # -----------------------------------------------
 manual_deploy() {
     local completed=()
@@ -953,7 +682,8 @@ manual_deploy() {
 }
 
 # -----------------------------------------------
-# 显示部署摘要
+# 显示部署摘要信息
+# 展示应用名称、目录、服务状态和常用命令
 # -----------------------------------------------
 show_deployment_summary() {
     echo
