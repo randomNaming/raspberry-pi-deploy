@@ -669,7 +669,7 @@ manual_deploy() {
         echo
 
         local choice
-        safe_read_char "选择步骤 [1-${#options[@]}]" choice
+        choice=$(safe_read "选择步骤 [1-${#options[@]}]" "")
         echo
 
         local result=0
