@@ -346,6 +346,19 @@ deploy_service() {
         discovery_ip=$(grep -oP 'Address\s*=\s*\K[0-9.]+' "/etc/wireguard/wg0.conf" 2>/dev/null) || discovery_ip="10.0.0.2"
     fi
 
+    # 获取实例 ID，确保与用户配置一致
+    local instance_id="pi-01"
+    local prod_config="$APP_DIR/config/application-prod.yml"
+    if [ -f "$prod_config" ]; then
+        local raw_id
+        raw_id=$(grep -A1 'instance-id' "$prod_config" 2>/dev/null | grep 'instance-id' | sed -E 's/.*instance-id:\s*//' | tr -d '[:space:]')
+        # 去掉 Spring Boot ${...} 外壳，提取默认值
+        raw_id=$(echo "$raw_id" | sed -E 's/\$\{[^:]*:([^}]+)\}/\1/')
+        if [ -n "$raw_id" ]; then
+            instance_id="$raw_id"
+        fi
+    fi
+
     # 创建服务文件内容
     local service_content="[Unit]
 Description=HCP Simulator Lite - 云快充模拟桩服务
@@ -361,7 +374,7 @@ Environment=\"NACOS_HOST=10.0.0.1\"
 Environment=\"NACOS_PORT=8848\"
 Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=${discovery_ip}\"
 Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_PORT=18080\"
-Environment=\"SIMULATOR_INSTANCE_ID=pi-01\"
+Environment=\"SIMULATOR_INSTANCE_ID=${instance_id}\"
 ExecStart=/usr/bin/java -Xms256m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8 -Dspring.profiles.active=prod -jar ${APP_DIR}/${JAR_FILE}
 ExecStop=/bin/kill -15 \$MAINPID
 Restart=always
