@@ -251,7 +251,7 @@ reset_wireguard_config() {
 
     # 备份现有配置
     local backup_file="${BACKUP_DIR}/wg0.conf.$(get_timestamp)"
-    if [ -f "$WG_CONF_FILE" ]; then
+    if run_as_root test -f "$WG_CONF_FILE"; then
         run_as_root cp "$WG_CONF_FILE" "$backup_file" 2>/dev/null || true
         print_info "配置已备份: $backup_file"
     fi

@@ -342,7 +342,7 @@ deploy_service() {
     wg_ip=$(ip addr show wg0 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
     if [ -n "$wg_ip" ]; then
         discovery_ip="$wg_ip"
-    elif [ -f "/etc/wireguard/wg0.conf" ]; then
+    elif run_as_root test -f "/etc/wireguard/wg0.conf"; then
         discovery_ip=$(grep -oP 'Address\s*=\s*\K[0-9.]+' "/etc/wireguard/wg0.conf" 2>/dev/null) || discovery_ip="10.0.0.2"
     fi
 

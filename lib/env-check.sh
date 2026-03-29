@@ -237,7 +237,7 @@ check_vpn() {
     print_success "WireGuard 已安装"
 
     # 检查配置文件
-    if [ ! -f "/etc/wireguard/wg0.conf" ]; then
+    if ! run_as_root test -f "/etc/wireguard/wg0.conf"; then
         print_warn "配置文件不存在（部署时可自动生成）"
         return 1
     fi

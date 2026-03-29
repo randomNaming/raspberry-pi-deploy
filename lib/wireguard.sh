@@ -123,7 +123,7 @@ generate_wireguard_keys() {
     ensure_dir "$WG_CONF_DIR"
 
     # 检查是否已有密钥
-    if [ -f "${WG_CONF_DIR}/pi_private.key" ] && [ -f "${WG_CONF_DIR}/pi_public.key" ]; then
+    if run_as_root test -f "${WG_CONF_DIR}/pi_private.key" && run_as_root test -f "${WG_CONF_DIR}/pi_public.key"; then
         print_info "密钥对已存在"
         if ! confirm "重新生成密钥对?" "n"; then
             return 0
@@ -177,7 +177,7 @@ configure_wireguard() {
     local private_key=""
     if [ -f "$TEMP_DIR/wg-private-key" ]; then
         private_key=$(cat "$TEMP_DIR/wg-private-key")
-    elif [ -f "${WG_CONF_DIR}/pi_private.key" ]; then
+    elif run_as_root test -f "${WG_CONF_DIR}/pi_private.key"; then
         private_key=$(run_as_root cat "${WG_CONF_DIR}/pi_private.key")
     else
         print_error "未找到私钥，请先生成密钥对"
@@ -254,8 +254,8 @@ PersistentKeepalive = 25
 
     # 显示服务器端需要完成的操作
     local my_public_key=""
-    if [ -f "${WG_CONF_DIR}/pi_public.key" ]; then
-        my_public_key=$(cat "${WG_CONF_DIR}/pi_public.key")
+    if run_as_root test -f "${WG_CONF_DIR}/pi_public.key"; then
+        my_public_key=$(run_as_root cat "${WG_CONF_DIR}/pi_public.key")
     fi
     echo
     echo -e "${YELLOW}========================================${NC}"
