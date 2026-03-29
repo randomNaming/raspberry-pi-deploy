@@ -107,10 +107,16 @@ configure_vpn() {
 
     local vpn_ip sim_id
 
-    # 读取现有配置
+    # 优先从运行中的 WireGuard 接口读取实际 VPN IP
+    vpn_ip=$(ip addr show wg0 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+
+    # 读取现有实例ID
     if [ -f "/etc/systemd/system/${SERVICE_NAME}" ]; then
-        vpn_ip=$(grep "SPRING_CLOUD_NACOS_DISCOVERY_IP" "/etc/systemd/system/${SERVICE_NAME}" | cut -d'"' -f2)
         sim_id=$(grep "SIMULATOR_INSTANCE_ID" "/etc/systemd/system/${SERVICE_NAME}" | cut -d'"' -f2)
+        # VPN IP 回退：从现有服务配置读取
+        if [ -z "$vpn_ip" ]; then
+            vpn_ip=$(grep "SPRING_CLOUD_NACOS_DISCOVERY_IP" "/etc/systemd/system/${SERVICE_NAME}" | cut -d'"' -f2)
+        fi
     fi
 
     # 设置默认值
@@ -216,9 +222,17 @@ EOF
 
     # 更新systemd服务中的VPN配置
     local vpn_config
-    vpn_config=$(cat "$TEMP_DIR/hcp-vpn-config" 2>/dev/null || echo "10.0.0.2:pi-01")
+    vpn_config=$(cat "$TEMP_DIR/hcp-vpn-config" 2>/dev/null)
     local vpn_ip sim_id
-    IFS=':' read -r vpn_ip sim_id <<< "$vpn_config"
+    if [ -n "$vpn_config" ]; then
+        IFS=':' read -r vpn_ip sim_id <<< "$vpn_config"
+    else
+        # 临时文件不存在时，从 WireGuard 接口读取实际 IP
+        vpn_ip=$(ip addr show wg0 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+        sim_id=$(grep "SIMULATOR_INSTANCE_ID" "/etc/systemd/system/${SERVICE_NAME}" 2>/dev/null | cut -d'"' -f2)
+        vpn_ip=${vpn_ip:-10.0.0.2}
+        sim_id=${sim_id:-pi-01}
+    fi
 
     # 更新systemd服务文件中的环境变量
     if [ -f "/etc/systemd/system/${SERVICE_NAME}" ]; then

@@ -337,10 +337,13 @@ deploy_service() {
 
     # 获取 WireGuard VPN IP，确保 Nacos 注册 IP 与 VPN IP 一致
     local discovery_ip="10.0.0.2"
-    if [ -f "$TEMP_DIR/wg-vpn-ip" ]; then
-        discovery_ip=$(cat "$TEMP_DIR/wg-vpn-ip")
+    # 优先从运行中的 WireGuard 接口读取实际 IP
+    local wg_ip
+    wg_ip=$(ip addr show wg0 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+    if [ -n "$wg_ip" ]; then
+        discovery_ip="$wg_ip"
     elif [ -f "/etc/wireguard/wg0.conf" ]; then
-        discovery_ip=$(grep -oP 'Address\s*=\s*\K[0-9.]+' "/etc/wireguard/wg0.conf" 2>/dev/null || echo "10.0.0.2")
+        discovery_ip=$(grep -oP 'Address\s*=\s*\K[0-9.]+' "/etc/wireguard/wg0.conf" 2>/dev/null) || discovery_ip="10.0.0.2"
     fi
 
     # 创建服务文件内容
