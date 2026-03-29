@@ -9,37 +9,39 @@ Bash shell script project for automated deployment of **HCP Simulator Lite** (cl
 ```
 raspberry-pi-deploy/
 ├── install.sh               # One-click install bootstrap script
-├── deploy-interactive.sh    # Main entry point
+├── deploy-interactive.sh    # Main entry point (set -uo pipefail)
+├── docs/
+│   └── DEPLOYMENT_GUIDE.md  # Detailed deployment guide
 └── lib/
     ├── common.sh            # Utilities: logging, colors, user interaction
     ├── state.sh             # Deployment state management
     ├── env-check.sh         # Environment detection (OS, Java, network, disk)
     ├── mirror.sh            # Mirror source management (Aliyun, Tsinghua, USTC)
-    ├── download.sh          # JAR download & deploy (local search, Gitee/GitHub releases)
+    ├── download.sh          # JAR download & deploy (local search, releases)
     ├── install.sh           # Main install flow (Java, dirs, config, service)
+    ├── wireguard.sh         # WireGuard VPN setup
     ├── config.sh            # Configuration wizard (server, piles, VPN)
     ├── service.sh           # systemd service management
     ├── snapshot.sh          # Snapshot and rollback
-    ├── resume.sh            # Resume interrupted deployments
-    └── wireguard.sh         # WireGuard VPN setup
+    └── resume.sh            # Resume interrupted deployments
 ```
 
-## Running & Testing
+## Build, Lint & Test Commands
 
-There is no automated test suite or linting framework. Verification is done by running the scripts interactively:
+There is no automated test suite. Verification is done by running scripts interactively:
 
 ```bash
-# Run the deployment manager
-./deploy-interactive.sh
-
-# Run with bash strict mode (already set in scripts)
-bash -x ./deploy-interactive.sh   # debug/trace mode
-
 # Syntax check a single script
 bash -n lib/common.sh
 
+# Syntax check all scripts
+for f in lib/*.sh deploy-interactive.sh; do bash -n "$f" && echo "$f OK"; done
+
 # Lint with shellcheck (if installed)
 shellcheck lib/*.sh deploy-interactive.sh
+
+# Debug/trace mode
+bash -x ./deploy-interactive.sh
 
 # Run a single module for testing
 source lib/common.sh && init_common
@@ -48,60 +50,68 @@ source lib/common.sh && init_common
 ## Code Style Guidelines
 
 ### Shell Options
-- Use `set -uo pipefail` at the top of entry scripts (not in sourced lib files)
+- `set -uo pipefail` at the top of entry scripts only — never in sourced lib files
 - Do NOT use `set -e` — error handling is explicit via return codes
 
-### Shebang & Header
-- Every file starts with `#!/bin/bash`
-- Follow with a `# ====` block header comment describing the module purpose
+### File Header Format
+```bash
+#!/bin/bash
+# =============================================================================
+# 模块名称（中文描述）
+# 说明该模块的职责
+# =============================================================================
+```
 
-### File & Module Organization
-- One module per file in `lib/`
-- Load order matters: `common.sh` first, then others by dependency
-- Source modules with `source "$lib_dir/module.sh"`; add `# shellcheck source=/dev/null` before sourcing
+### Module Loading
+- Load order in `deploy-interactive.sh`: common.sh → state.sh → env-check.sh → mirror.sh → download.sh → install.sh → wireguard.sh → config.sh → service.sh → snapshot.sh → resume.sh
+- Precede each `source` with `# shellcheck source=/dev/null`
 
 ### Constants & Variables
-- Global constants: `readonly UPPER_SNAKE_CASE` (e.g., `readonly APP_NAME="hcp-simulator-lite"`)
-- Script dir: `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`
-- Local variables: `local` keyword always, declare at the top of each function
-- Temp files: use `$TEMP_DIR` with `$$` suffix for uniqueness
+- Global constants: `readonly UPPER_SNAKE_CASE` in `common.sh` (e.g., `APP_NAME`, `APP_DIR`, `SERVICE_NAME`)
+- Module-local constants: `readonly` at top of module file (e.g., `WG_CONF_DIR` in wireguard.sh)
+- `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` — use this pattern, not `$0`
+- Always declare `local` at the top of functions; never use global mutable variables
+- Temp files: use `$TEMP_DIR` (set to `/tmp/hcp-deploy-$$`)
 
 ### Naming Conventions
-- Functions: `lower_snake_case` (e.g., `check_java`, `deploy_service`)
-- Prefix helper/utility functions descriptively: `safe_read`, `safe_exec`, `run_as_root`
-- Print functions: `print_info`, `print_warn`, `print_error`, `print_success`, `print_step`, `print_header`
+- Functions: `lower_snake_case` (e.g., `check_java`, `deploy_service`, `configure_vpn`)
+- Utility prefix: `safe_` for input wrappers (`safe_read`, `safe_exec`, `safe_read_char`), `run_as_root` for privilege escalation
+- Print functions (all in common.sh): `print_info`, `print_warn`, `print_error`, `print_success`, `print_step`, `print_header`
 
 ### Output & Logging
-- All user-facing output goes through `print_*` functions in `common.sh`
-- Every `print_*` call also writes to the log file via `log "LEVEL" "message"`
-- Use ANSI color codes via the defined constants: `$RED`, `$GREEN`, `$YELLOW`, `$BLUE`, `$CYAN`, `$NC`
-- Log file: `~/.hcp-deploy.log`
+- All user-facing output through `print_*` functions — never raw `echo` for status messages
+- Each `print_*` also writes to `~/.hcp-deploy.log` via `log "LEVEL" "msg"`
+- Colors: `$RED`, `$GREEN`, `$YELLOW`, `$BLUE`, `$CYAN`, `$NC` (reset)
 
 ### User Interaction
-- Always check `[[ -t 0 ]]` for interactive terminal before `read`
-- Provide non-interactive defaults for CI/piped execution
-- Use `confirm "prompt?" "y|n"` for yes/no questions
-- Use `safe_read "prompt" "default"` for text input
-- Use `safe_read_char "prompt" var_name "default"` for single-char menus
+- Always gate with `[[ -t 0 ]]` before `read` — non-interactive environments must have defaults
+- `confirm "prompt?" "y|n"` — yes/no, returns 0/1
+- `safe_read "prompt" "default"` — text input, echoes result
+- `safe_read_char "prompt" var_name` — single-char menu selection
 
 ### Error Handling
-- Functions return `0` on success, `1` on failure — always check `$?`
-- Use `safe_exec "command" "error message"` for wrapped execution
-- Use `run_as_root` to conditionally add `sudo` based on `$EUID`
-- On deployment failure: mark state with `mark_failed`, offer `rollback_prompt`
-- Suppress errors with `2>/dev/null || true` only where intentional (e.g., status checks)
+- Functions return `0` success, `1` failure — always check `$?`
+- `run_as_root cmd` — runs as root if `$EUID != 0`, otherwise runs directly (no sudo)
+- `safe_exec "cmd" "error msg"` — wraps `eval`, prints error on failure
+- Suppress intentional failures: `command 2>/dev/null || true`
+- On deploy failure: `mark_failed "step_name" "reason"`, offer `rollback_prompt`
+
+### Root Access & File Permissions
+- `/etc/wireguard/` is typically `700` (root-only). **Always use `run_as_root test -f`** to check files there — plain `[ -f ... ]` fails for non-root users
+- Same applies to any system path (`/etc/systemd/`, etc.): use `run_as_root` for file checks and reads
+- Pattern: `if run_as_root test -f "$path"; then` NOT `if [ -f "$path" ]; then`
 
 ### Quoting & Expansion
-- Always double-quote variables: `"$APP_DIR"`, `"$1"`
-- Use `"${array[@]}"` for array iteration
-- Prefer `$()` over backticks for command substitution
-- Use `<<<` here-strings and `<< 'EOF'` (quoted) for literal heredocs; unquoted `<< EOF` for variable expansion
+- Double-quote all variable expansions: `"$APP_DIR"`, `"$1"`
+- Arrays: `"${array[@]}"` for iteration
+- Command substitution: `$()` not backticks
+- Literal heredocs: `<< 'EOF'`; variable-expanding heredocs: `<< EOF`
 
 ### Conditionals
-- Use `[[ ]]` for bash-specific tests, `[ ]` for POSIX compatibility
-- Pattern matching: `[[ "$var" =~ ^[0-9]{14}$ ]]`
+- `[[ ]]` for bash tests, `[ ]` only for POSIX compatibility
+- Regex: `[[ "$var" =~ ^[0-9]{14}$ ]]`
 - Command existence: `command_exists cmd_name` (wrapper in common.sh)
 
 ### Section Separators
-- Use `# ------` blocks to separate logical sections within files
-- Use `print_step "Description"` to announce major operations to the user
+- Logical blocks: `# ------` separator lines
+- Announce major operations: `print_step "Description"`
