@@ -248,6 +248,7 @@ ykc:
   protocol-version: ${protocol_version}
   software-version: "${software_version}"
   # 桩配置列表（每桩可配多把枪）
+  piles:
 EOF
 
     # 写入桩配置
