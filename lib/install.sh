@@ -483,7 +483,8 @@ auto_deploy() {
             print_success "VPN 连通性正常"
         else
             print_warn "VPN 无法连接服务器 (10.0.0.1)"
-            print_info "请检查服务器端是否已添加本机公钥"
+            print_info "请检查服务器端是否已添加本机公钥并重启 WireGuard"
+            print_info "  服务器执行: sudo systemctl restart wg-quick@wg0"
             if confirm "重新配置 WireGuard?" "y"; then
                 if ! setup_wireguard_wizard; then
                     print_error "WireGuard 配置失败，无法继续部署"
@@ -504,8 +505,9 @@ auto_deploy() {
             print_error "VPN 无法连接服务器 (10.0.0.1)"
             print_info "请检查:"
             print_info "  1. 服务器端是否已添加本机公钥"
-            print_info "  2. 服务器安全组是否开放 UDP 51820"
-            print_info "  3. WireGuard配置是否正确"
+            print_info "  2. ${RED}服务器管理员是否已重启 WireGuard: sudo systemctl restart wg-quick@wg0${NC}"
+            print_info "  3. 服务器安全组是否开放 UDP 51820"
+            print_info "  4. WireGuard配置是否正确"
             if ! confirm "跳过VPN检查继续部署?" "n"; then
                 return 1
             fi

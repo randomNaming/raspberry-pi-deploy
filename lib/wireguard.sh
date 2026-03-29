@@ -149,10 +149,15 @@ generate_wireguard_keys() {
     print_success "密钥对已生成"
     echo
     echo -e "${YELLOW}========================================${NC}"
-    echo -e "${YELLOW}  请将以下公钥发送给服务器管理员${NC}"
+    echo -e "${YELLOW}  请将以下信息发送给服务器管理员${NC}"
     echo -e "${YELLOW}========================================${NC}"
     echo
     echo -e "  公钥: ${GREEN}${public_key}${NC}"
+    echo
+    echo -e "  ${RED}重要：服务器管理员需要完成以下操作才能建立连接：${NC}"
+    echo -e "  1. 编辑服务器 WireGuard 配置: ${GREEN}sudo nano /etc/wireguard/wg0.conf${NC}"
+    echo -e "  2. 在文件末尾添加 [Peer] 配置段（包含上述公钥）"
+    echo -e "  3. ${RED}重启 WireGuard 服务: ${GREEN}sudo systemctl restart wg-quick@wg0${NC}"
     echo
 
     # 保存到临时文件供后续使用
@@ -246,6 +251,32 @@ PersistentKeepalive = 25
     print_success "WireGuard 配置完成"
     print_info "配置文件: $WG_CONF_FILE"
     print_info "VPN IP: $vpn_ip"
+
+    # 显示服务器端需要完成的操作
+    local my_public_key=""
+    if [ -f "${WG_CONF_DIR}/pi_public.key" ]; then
+        my_public_key=$(cat "${WG_CONF_DIR}/pi_public.key")
+    fi
+    echo
+    echo -e "${YELLOW}========================================${NC}"
+    echo -e "${YELLOW}  请将以下信息发送给服务器管理员${NC}"
+    echo -e "${YELLOW}========================================${NC}"
+    echo
+    if [ -n "$my_public_key" ]; then
+        echo -e "  本机公钥: ${GREEN}${my_public_key}${NC}"
+    fi
+    echo -e "  本机 VPN IP: ${GREEN}${vpn_ip}${NC}"
+    echo
+    echo -e "  ${RED}重要：服务器管理员需要完成以下操作才能建立连接：${NC}"
+    echo -e "  1. 编辑服务器 WireGuard 配置: ${GREEN}sudo nano /etc/wireguard/wg0.conf${NC}"
+    echo -e "  2. 在文件末尾添加 [Peer] 配置段："
+    echo -e "     ${CYAN}[Peer]${NC}"
+    if [ -n "$my_public_key" ]; then
+        echo -e "     ${CYAN}PublicKey = ${my_public_key}${NC}"
+    fi
+    echo -e "     ${CYAN}AllowedIPs = ${vpn_ip}/32${NC}"
+    echo -e "  3. ${RED}重启 WireGuard 服务: ${GREEN}sudo systemctl restart wg-quick@wg0${NC}"
+    echo
 
     return 0
 }
@@ -374,7 +405,8 @@ verify_wireguard() {
     else
         print_warn "VPN 连通: $WG_DEFAULT_SERVER_IP (不可达)"
         print_info "可能原因:"
-        print_info "  1. 服务器端未添加本机公钥"
+        print_info "  1. 服务器端未添加本机公钥或未重启 WireGuard"
+        print_info "     ${RED}请确认服务器管理员已执行: sudo systemctl restart wg-quick@wg0${NC}"
         print_info "  2. VPN IP 配置冲突"
         print_info "  3. 云服务器安全组未开放 UDP $WG_DEFAULT_PORT"
     fi
