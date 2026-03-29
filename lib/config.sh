@@ -262,14 +262,98 @@ run_config_wizard() {
 }
 
 # -----------------------------------------------
-# 查看部署日志
+# 查看日志（交互式菜单）
 # -----------------------------------------------
 view_logs() {
-    print_header "部署日志"
+    while true; do
+        echo
+        print_header "查看日志"
+        echo
 
-    if [ -f "$LOG_FILE" ]; then
-        tail -100 "$LOG_FILE"
+        echo "  [1] 实时日志 (Ctrl+C 退出)"
+        echo "  [2] 最近日志 (按行数)"
+        echo "  [3] 按时间范围导出日志"
+        echo "  [4] 部署脚本日志"
+        echo "  [0] 返回主菜单"
+        echo
+
+        local choice
+        safe_read_char "选择 [0-4]" choice
+        echo
+
+        case $choice in
+            1)
+                print_info "按 Ctrl+C 退出实时日志"
+                journalctl -u "${SERVICE_NAME}" -f 2>/dev/null || print_warn "服务尚未注册，无日志可查看"
+                ;;
+            2)
+                local lines
+                lines=$(safe_read "显示最近几行日志" "100")
+                if ! [[ "$lines" =~ ^[0-9]+$ ]] || [ "$lines" -lt 1 ]; then
+                    print_error "请输入有效的正整数"
+                    continue
+                fi
+                journalctl -u "${SERVICE_NAME}" -n "$lines" --no-pager 2>/dev/null || print_warn "服务尚未注册，无日志可查看"
+                ;;
+            3)
+                view_logs_export
+                ;;
+            4)
+                if [ -f "$LOG_FILE" ]; then
+                    tail -200 "$LOG_FILE"
+                else
+                    print_warn "未找到部署日志文件: $LOG_FILE"
+                fi
+                ;;
+            0) return 0 ;;
+            *)
+                if [ -n "$choice" ]; then
+                    print_error "无效选择"
+                fi
+                ;;
+        esac
+
+        # 非交互环境下自动退出
+        if [[ ! -t 0 ]]; then
+            return 0
+        fi
+
+        pause
+    done
+}
+
+# -----------------------------------------------
+# 按时间范围导出日志
+# -----------------------------------------------
+view_logs_export() {
+    echo -e "${CYAN}--- 时间范围 ---${NC}"
+    echo -e "${GREEN}[说明]${NC} 支持格式: YYYY-MM-DD, YYYY-MM-DD HH:MM, yesterday, today, -1h, -30m"
+    echo
+
+    local since until_time output_file
+
+    since=$(safe_read "起始时间 (如 2026-03-29 或 -1h)" "today")
+    until_time=$(safe_read "结束时间 (留空表示到当前)" "")
+
+    # 生成默认导出文件名
+    local default_file="${HOME}/hcp-simulator-logs_$(date +%Y%m%d_%H%M%S).log"
+    output_file=$(safe_read "导出文件路径" "$default_file")
+
+    # 构建 journalctl 命令
+    local cmd="journalctl -u ${SERVICE_NAME} --since \"${since}\" --no-pager"
+    if [ -n "$until_time" ]; then
+        cmd="${cmd} --until \"${until_time}\""
+    fi
+
+    print_info "正在导出日志..."
+
+    # 执行并保存
+    if eval "$cmd" > "$output_file" 2>/dev/null; then
+        local line_count
+        line_count=$(wc -l < "$output_file")
+        print_success "日志已导出: ${GREEN}${output_file}${NC} (${line_count} 行)"
     else
-        print_warn "未找到日志文件"
+        print_error "日志导出失败，请检查时间格式是否正确"
+        rm -f "$output_file" 2>/dev/null || true
     fi
 }

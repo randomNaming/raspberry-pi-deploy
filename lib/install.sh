@@ -335,6 +335,14 @@ EOF
 deploy_service() {
     print_step "部署Systemd服务"
 
+    # 获取 WireGuard VPN IP，确保 Nacos 注册 IP 与 VPN IP 一致
+    local discovery_ip="10.0.0.2"
+    if [ -f "$TEMP_DIR/wg-vpn-ip" ]; then
+        discovery_ip=$(cat "$TEMP_DIR/wg-vpn-ip")
+    elif [ -f "/etc/wireguard/wg0.conf" ]; then
+        discovery_ip=$(grep -oP 'Address\s*=\s*\K[0-9.]+' "/etc/wireguard/wg0.conf" 2>/dev/null || echo "10.0.0.2")
+    fi
+
     # 创建服务文件内容
     local service_content="[Unit]
 Description=HCP Simulator Lite - 云快充模拟桩服务
@@ -348,7 +356,7 @@ Group=$(id -gn)
 WorkingDirectory=${APP_DIR}
 Environment=\"NACOS_HOST=10.0.0.1\"
 Environment=\"NACOS_PORT=8848\"
-Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=10.0.0.2\"
+Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_IP=${discovery_ip}\"
 Environment=\"SPRING_CLOUD_NACOS_DISCOVERY_PORT=18080\"
 Environment=\"SIMULATOR_INSTANCE_ID=pi-01\"
 ExecStart=/usr/bin/java -Xms256m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8 -Dspring.profiles.active=prod -jar ${APP_DIR}/${JAR_FILE}
